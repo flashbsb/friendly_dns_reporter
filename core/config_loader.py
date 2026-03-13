@@ -39,6 +39,40 @@ class Settings:
     def log_dir(self):
         return self.get_str("REPORTS", "LOG_DIR", "logs")
 
+    @property
+    def enable_html_report(self):
+        return self.get_bool("REPORTS", "ENABLE_HTML_REPORT", True)
+
+    @property
+    def enable_json_report(self):
+        return self.get_bool("REPORTS", "ENABLE_JSON_REPORT", True)
+
+    @property
+    def enable_csv_report(self):
+        return self.get_bool("REPORTS", "ENABLE_CSV_REPORT", True)
+
+    # --- DIG OPTIONS (Legacy Mapping) ---
+    @property
+    def dig_timeout(self):
+        return self.get_int("DIG_OPTIONS", "DIG_TIMEOUT", 1)
+
+    @property
+    def dig_tries(self):
+        return self.get_int("DIG_OPTIONS", "DIG_TRIES", 1)
+
+    # --- PHASES ---
+    @property
+    def enable_phase_server(self):
+        return self.get_bool("PHASES", "ENABLE_PHASE_SERVER", True)
+
+    @property
+    def enable_phase_zone(self):
+        return self.get_bool("PHASES", "ENABLE_PHASE_ZONE", True)
+
+    @property
+    def enable_phase_record(self):
+        return self.get_bool("PHASES", "ENABLE_PHASE_RECORD", True)
+
     # --- CONNECTIVITY ---
     @property
     def enable_ping(self):
@@ -47,6 +81,18 @@ class Settings:
     @property
     def ping_count(self):
         return self.get_int("CONNECTIVITY", "PING_COUNT", 3)
+
+    @property
+    def enable_trace(self):
+        return self.get_bool("CONNECTIVITY", "ENABLE_TRACE", False)
+
+    @property
+    def trace_max_hops(self):
+        return self.get_int("CONNECTIVITY", "TRACE_MAX_HOPS", 15)
+
+    @property
+    def enable_tcp_check(self):
+        return self.get_bool("CONNECTIVITY", "ENABLE_TCP_CHECK", True)
 
     # --- ADVANCED CHECKS ---
     @property
@@ -62,14 +108,39 @@ class Settings:
         return self.get_bool("ADVANCED_CHECKS", "ENABLE_DNSSEC_CHECK", True)
 
     @property
+    def enable_edns_check(self):
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_EDNS_CHECK", True)
+
+    @property
     def enable_dot_check(self):
-        return self.get_bool("ADVANCED_CHECKS", "ENABLE_TLS_CHECK", True) # Using ENABLE_TLS_CHECK mapping
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_DOT_CHECK", True)
 
     @property
     def enable_doh_check(self):
         return self.get_bool("ADVANCED_CHECKS", "ENABLE_DOH_CHECK", True)
 
+    # --- ZONE TESTS ---
+    @property
+    def enable_axfr_check(self):
+        return self.get_bool("ZONE_TESTS", "ENABLE_AXFR_CHECK", True)
+
+    @property
+    def enable_soa_serial_check(self):
+        return self.get_bool("ZONE_TESTS", "ENABLE_SOA_SERIAL_CHECK", True)
+
     # --- CONSISTENCY ---
     @property
     def consistency_checks(self):
-        return self.get_int("CONSISTENCY", "CONSISTENCY_CHECKS", 1)
+        return self.get_int("CONSISTENCY", "CONSISTENCY_CHECKS", 5)
+
+    @property
+    def strict_ip_check(self):
+        return self.get_bool("CONSISTENCY", "STRICT_IP_CHECK", False)
+
+    @property
+    def strict_order_check(self):
+        return self.get_bool("CONSISTENCY", "STRICT_ORDER_CHECK", False)
+
+    @property
+    def strict_ttl_check(self):
+        return self.get_bool("CONSISTENCY", "STRICT_TTL_CHECK", False)

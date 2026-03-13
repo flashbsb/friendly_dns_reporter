@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v2.3.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v2.4.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -15,11 +15,12 @@ This tool has been completely rewritten in Python to ensure native compatibility
 
 ## 🚀 Features (Buzzwords)
 
-*   **Automated Diagnostics**: Pings, port checks, DNSSEC, recursion audits, and more.
+*   **3-Phase Diagnostics**: Optimized workflow covering Server (Infra), Zone (Sync/AXFR), and Records (Consistency).
 *   **True Parallelism**: Multithreaded execution to test hundreds of records in seconds.
-*   **Premium Dashboard**: Modern visual reports (HTML) using Jinja2 templates.
-*   **Security & Compliance**: BIND version audit, DNSSEC validation, DoH (DNS over HTTPS), and DoT (DNS over TLS).
-*   **Friendly Interface**: Color-coded terminal logs with a consolidated summary table.
+*   **Premium Dashboard**: Modern visual reports (HTML) with detailed metrics and mobile responsiveness.
+*   **Security & Compliance**: AXFR vulnerability testing, BIND version audit, DNSSEC validation, DoH/DoT, and EDNS0 (NSID).
+*   **Dynamic Configuration**: Full `settings.ini` integration (Respecting toggles, timeouts, and consistency modes).
+*   **Friendly Interface**: Color-coded terminal logs with phase-based grouping.
 
 ## 📦 Installation
 
@@ -65,10 +66,11 @@ python friendly_dns_reporter.py -c 3
 ## ⚙️ Configuration (`config/settings.ini`)
 
 The `settings.ini` file centralizes script behavior:
+- `ENABLE_PHASE_*`: Toggle Infrastructure, Zone, or Record phases independently.
 - `MAX_THREADS`: Parallelism limit.
-- `TIMEOUT`: Query timeout in seconds.
+- `TIMEOUT` / `DIG_TIMEOUT`: Global and engine timeouts.
 - `LOG_DIR`: Directory where reports are saved.
-- `ENABLE_HTML_REPORT`: Toggle visual dashboard generation.
+- `STRICT_*_CHECK`: Define tolerance for record consistency (IP, TTL, Order).
 
 ## 📄 Input Files
 
