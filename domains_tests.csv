@@ -1,7 +1,0 @@
-# DOMINIO;GRUPOS;TESTE;TIPOS_REGISTRO;HOSTS_EXTRA
-google.com;GOOGLE,CLOUDFLARE;recursive;a,aaaa,txt;www,mail
-wikipedia.org;QUAD9,OPENDNS;recursive;a,soa;pt,en
-cisco.com;OPENDNS;recursive;mx,txt;
-ietf.org;ROOT_SERVERS;iterative;ns;
-example.com;GOOGLE,CLOUDFLARE,QUAD9;recursive;a;
-fail-test.local;GOOGLE;recursive;a;

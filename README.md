@@ -1,8 +1,8 @@
-# FriendlyDNSReporter
+# FriendlyDNSReporter (Python Edition)
 > *Because it is always DNS. Or not. But mostly yes.*
 
-[![Bash](https://img.shields.io/badge/Language-Bash-4EAA25.svg)](https://gnu.org/software/bash/)
-[![Status](https://img.shields.io/badge/Status-It_Works_(Probably)-green.svg)]()
+[![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
+[![Status](https://img.shields.io/badge/Status-Stable_(v2.2.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -11,80 +11,88 @@ Do you like staring at raw text output until your eyes bleed?
 
 **No?** Then `FriendlyDNSReporter` is for you.
 
-This script runs a battery of automated tests (Consistency, Latency, Security, RFC Compliance) against your DNS infrastructure and generates a **colorful HTML report** that makes you look like you worked really hard.
+This tool has been completely rewritten in Python to ensure native compatibility between **Windows** and **Linux**, providing fast, parallel diagnostics and modern visual reports.
 
 ## 🚀 Features (Buzzwords)
 
-*   **Automated Diagnostics**: Pings, Traces, TCP checks, and thousands of queries while you get coffee.
-*   **HTML Dashboard**: A fancy report with charts and "Health Scores" to impress management.
-*   **Security Audits**: Checks if you are leaking your BIND version or allowing open recursion (shame on you).
-*   **Modern Standards**: Validates DoH, DoT, IPv6, and other things you probably haven't deployed yet.
-*   **Sarcastic Output**: The terminal logs tell you the bitter truth.
+*   **Automated Diagnostics**: Pings, port checks, DNSSEC, recursion audits, and more.
+*   **True Parallelism**: Multithreaded execution to test hundreds of records in seconds.
+*   **Premium Dashboard**: Modern visual reports (HTML) using Jinja2 templates.
+*   **Security & Compliance**: BIND version audit, DNSSEC validation, DoH (DNS over HTTPS), and DoT (DNS over TLS).
+*   **Friendly Interface**: Color-coded terminal logs with a consolidated summary table.
 
 ## 📦 Installation
 
-Clone this thing. You know how.
-```bash
-git clone https://github.com/flashbsb/FriendlyDNSReporter.git
-cd FriendlyDNSReporter
-chmod +x FriendlyDNSReporter.sh
-```
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/flashbsb/FriendlyDNSReporter.git
+    cd FriendlyDNSReporter
+    ```
+
+2.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## 🎮 Usage
 
-You can just run it, and it will hold your hand:
+### Basic Execution
+The script uses files in the `config/` directory by default:
 ```bash
-./FriendlyDNSReporter.sh
+python friendly_dns_reporter.py
 ```
 
-Or, if you are a "Power User" (antisocial):
+### Advanced Examples
 ```bash
-./FriendlyDNSReporter.sh -y -n domains_tests.csv -g dns_groups.csv
+# Using custom datasets and 20 parallel threads
+python friendly_dns_reporter.py -n my_dataset.csv -t 20
+
+# Running a consistency loop (repeats each test 3 times)
+python friendly_dns_reporter.py -c 3
 ```
 
-### Flags for the Impatient
+### Command Flags
 
 | Flag | Description |
 |------|-------------|
-| `-n` | **Domains CSV**. The victims. |
-| `-g` | **Groups CSV**. The suspects. |
-| `-y` | **Yes Mode**. Don't ask me questions, just do it. |
-| `-l` | **Text Log**. Create a forensic trail (`logs/*.log`). |
-| `-j` | **JSON**. If you like parsing curly braces. |
-| `-v` | **Verbose**. Spam my terminal. |
-| `-h` | **Help**. Read the manual (it's sarcastic too). |
+| `-n` | **Domains CSV**. Path to domains file (Default: `config/domains.csv`). |
+| `-g` | **Groups CSV**. Path to server groups file (Default: `config/groups.csv`). |
+| `-o` | **Output**. Directory to save reports (Default: `logs`). |
+| `-t` | **Threads**. Parallel execution count (Default: 10 or from `.ini`). |
+| `-c` | **Consistency**. Number of repetitions per test to detect divergence. |
+| `-h` | **Help**. Show available options. |
 
-## ⚙️ Configuration
+## ⚙️ Configuration (`config/settings.ini`)
 
-There is a file called `FriendlyDNSReporter.conf`. **Read it.**
-Inside, you can tweak:
-*   `TIMEOUT`: How long to wait before declaring a server dead.
-*   `SLEEP`: How polite you want to be to the target firewall.
-*   `HTML_REPORT_LANG`: Supports `en` (English) and `pt` (Portuguese).
+The `settings.ini` file centralizes script behavior:
+- `MAX_THREADS`: Parallelism limit.
+- `TIMEOUT`: Query timeout in seconds.
+- `LOG_DIR`: Directory where reports are saved.
+- `ENABLE_HTML_REPORT`: Toggle visual dashboard generation.
 
-## 📄 Input Files (Don't break the format)
+## 📄 Input Files
 
-### `dns_groups.csv`
-Must have **5 columns**. Separated by **semicolons (;)**.
+Data files must be in CSV format (using `;` delimiter):
+
+### `config/groups.csv`
 ```csv
 # NAME;DESCRIPTION;TYPE;TIMEOUT;SERVERS
-GOOGLE;Public Google;recursive;2;8.8.8.8,8.8.4.4
-INTERNAL;Local AD;authoritative;5;192.168.1.10
+GOOGLE;Google Public DNS;recursive;2;8.8.8.8,8.8.4.4
+OPENDNS;Cisco OpenDNS;recursive;3;208.67.222.222,208.67.220.220
 ```
 
-### `domains_tests.csv`
-Must have **5 columns**. Separated by **semicolons (;)**.
+### `config/domains.csv`
 ```csv
-# DOMAIN;GROUPS;STRATEGY;RECORDS;EXTRA_HOSTS
-google.com;GOOGLE;recursive;a,aaaa,txt;www,mail
-mycompany.local;INTERNAL;authoritative;a,soa;
+# DOMAIN;GROUPS;STRATEGY;RECORDS;EXTRA
+google.com;GOOGLE,CLOUDFLARE;recursive;A,AAAA,TXT;www,mail
+wikipedia.org;QUAD9,OPENDNS;recursive;A,SOA;
 ```
 
 ## 🤝 Contributing
 
-Found a bug? Implemented a cool feature?
-Please open a Pull Request. We need all the help we can get to maintain this spaghetti code.
+Found a bug? Have a cool feature to add?
+Please open a Pull Request. We appreciate any help maintaining this "mostly DNS" diagnostic tool.
 
 ## 📜 License
 
-MIT. Do whatever you want, just don't blame us if you break your DNS.
+MIT. Use it as you wish, just don't blame us if it breaks your DNS.
