@@ -322,3 +322,67 @@ class DNSEngine:
             return False, None
         except:
             return False, None
+
+    def check_ecs_support(self, server):
+        """Check if server respects/handles EDNS Client Subnet (ECS)."""
+        # ECS is Option 8. We send a dummy subnet (1.2.3.0/24)
+        # Note: Many servers don't reflect ECS back unless they have a reason, 
+        # but we check if the response contains the option or if it's handled.
+        try:
+            from dns.edns import GenericOption
+            # Option 8: Family 1 (IPv4), Source 24, Scope 0, Address 1.2.3.0
+            ecs_data = b'\x00\x01\x18\x00\x01\x02\x03' 
+            options = [GenericOption(8, ecs_data)]
+            query = dns.message.make_query("google.com", "A")
+            query.use_edns(edns=0, payload=1232, options=options)
+            response = dns.query.udp(query, server, timeout=self.timeout)
+            
+            # If server returns ECS option, it's a strong SIGN of support
+            for opt in response.options:
+                if opt.otype == 8: return True
+            return False
+        except:
+            return False
+
+    def check_qname_minimization(self, server):
+        """Check for QNAME Minimization (RFC 7816) via qnamemintest.internet.nl."""
+        try:
+            # internet.nl provides a specific record for this
+            res = self.query(server, "qnamemintest.internet.nl", "A")
+            # If QNAME minimization is active, the result should be "HOORAY" or similar in TXT
+            # but usually for A record, if it resolves, it means it worked.
+            # More accurately, we check a TXT record there.
+            res_txt = self.query(server, "qnamemintest.internet.nl", "TXT")
+            for ans in res_txt['answers']:
+                if "HOORAY" in ans.upper(): return True
+            return False
+        except:
+            return False
+
+    def check_dns_cookies(self, server):
+        """Check for DNS Cookies (RFC 7873) support."""
+        try:
+            # Request cookie (Option 10)
+            from dns.edns import GenericOption
+            import os
+            client_cookie = os.urandom(8)
+            options = [GenericOption(10, client_cookie)]
+            query = dns.message.make_query(".", "SOA")
+            query.use_edns(edns=0, payload=1232, options=options)
+            response = dns.query.udp(query, server, timeout=self.timeout)
+            
+            for opt in response.options:
+                if opt.otype == 10: return True
+            return False
+        except:
+            return False
+
+    def validate_caa(self, server, domain):
+        """Check for CAA records (Certificate Authority Authorization)."""
+        try:
+            res = self.query(server, domain, "CAA")
+            if res['status'] == "NOERROR" and res['answers']:
+                return True, res['answers']
+            return False, []
+        except:
+            return False, []

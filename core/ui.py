@@ -10,10 +10,25 @@ WARN   = "\033[93m"  # Yellow
 INFO   = "\033[96m"  # Cyan
 CRIT   = "\033[95m"  # Magenta
 BOLD   = "\033[1m"
+UNDER  = "\033[4m"
+
+def get_score_color(score):
+    if score >= 90: return OK
+    if score >= 70: return WARN
+    return FAIL
+
+def format_grade(score):
+    """Return a colored letter grade based on score."""
+    if score >= 95: return f"{OK}A+{RESET}"
+    if score >= 90: return f"{OK}A{RESET}"
+    if score >= 80: return f"{OK}B{RESET}"
+    if score >= 70: return f"{WARN}C{RESET}"
+    if score >= 60: return f"{WARN}D{RESET}"
+    return f"{FAIL}F{RESET}"
 
 def print_banner(version=""):
     print("\n" + "=" * 80)
-    print(f"{BOLD}FRIENDLY DNS REPORTER {version}{RESET}")
+    print(f"{BOLD}FRIENDLY DNS REPORTER v6.5.0{RESET}")
     print("=" * 80)
 
 def print_header(threads, consistency, target):
@@ -25,16 +40,16 @@ def print_phase(name):
 
 def print_phase_header(name):
     if "1" in name:
-        print(f"  {INFO}{'GROUP':11}{RESET} | {INFO}{'IP ADDRESS':15}{RESET} | {'PING (R/S % ms)':16} | {'53 UDP':11} | {'53 TCP':11} | {'DNSSEC':11} | {'EDNS0':11} | {'DoT (853)':11} | {'DoH (443)':11} | {'OpenRes':9} | Status")
-        print("-" * 140)
+        print(f"  {INFO}{'GROUP':11}{RESET} | {INFO}{'IP ADDRESS':15}{RESET} | {'PING (R/S % ms)':16} | {'U53':10} | {'T53':10} | {'DoT':5} | {'DoH':5} | {'Sc':3} | {'CAPS (S E K Q X)':15} | {'OpenRes':9} | Status")
+        print("-" * 145)
     elif "2" in name:
-        print(f"  {'Domain':30} | {'Group':11} | {'Server':15} | {'SOA Serial':18} | {'Lat':7} | {'AA':4} | AXFR Status")
-        print("-" * 115)
+        print(f"  {'Domain':30} | {'Group':11} | {'Server':15} | {'SOA Serial':18} | {'Lat':7} | {'Sc':3} | {'AA':4} | AXFR Status")
+        print("-" * 120)
     elif "3" in name:
         print(f"  {'Domain':30} | {'Group':11} | {'Server':15} | {'Type':5} | {'Status':12} | {'Lat':7} | Sync")
         print("-" * 115)
 
-def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0):
+def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True):
     print("\n" + "=" * 80)
     print(f"{BOLD}FINAL DIAGNOSTIC SUMMARY{RESET}")
     print("=" * 80)
@@ -43,7 +58,25 @@ def print_summary_table(total, success, fail, div, sync_issues, reports, duratio
     print(f"  Failures (ERR)       : {(FAIL if fail > 0 else OK)}{fail}{RESET}")
     print(f"  Divergences (DIV)    : {(WARN if div > 0 else OK)}{div}{RESET}")
     print(f"  Sync/Zone Issues     : {(FAIL if sync_issues > 0 else OK)}{sync_issues}{RESET}")
+    
+    # Advanced Scores
+    def _score_clr(s):
+        if s >= 90: return OK
+        if s >= 70: return WARN
+        return FAIL
+
+    print(f"  {BOLD}SECURITY SCORE      : {_score_clr(sec_score)}{sec_score}/100{RESET}")
+    print(f"  {BOLD}PRIVACY SCORE       : {_score_clr(priv_score)}{priv_score}/100{RESET}")
+    
+    avg_score = (sec_score + priv_score) / 2
+    print(f"  {BOLD}GLOBAL HEALTH GRADE : {format_grade(avg_score)} ({avg_score:.1f}%){RESET}")
+    
     print(f"  Total Execution Time : {duration:.2f}s")
+    
+    if show_legend:
+        print("-" * 80)
+        print_legend_summary()
+
     if reports:
         print("-" * 80)
         print(f"  Reports Generated:")
@@ -104,11 +137,15 @@ def print_infra_detail(srv, data):
     dot_clr, dot_str = _fmt_port_serv(data.get('port853', 'CLOSED'), data.get('port853_serv', 'FAIL'), data.get('dot_lat', 0))
     doh_clr, doh_str = _fmt_port_serv(data.get('port443', 'CLOSED'), data.get('port443_serv', 'FAIL'), data.get('doh_lat', 0))
     
-    edns_clr = OK if data.get('edns0') == "OK" else FAIL
-    edns_str = f"OK ({data.get('edns0_lat', 0):.0f}ms)" if data.get('edns0') == "OK" else data.get('edns0', '--')
-    dsec_clr = OK if data.get('dnssec') == "OK" else FAIL
-    dsec_str = f"OK ({data.get('dnssec_lat', 0):.0f}ms)" if data.get('dnssec') == "OK" else data.get('dnssec', '--')
+    # Privacy/Security Capabilities (S=SEC, E=EDNS, C=Cookies, Q=QNAME-Min, X=ECS)
+    def _cap(key, char):
+        val = data.get(key)
+        # Handle both True/False and "OK"/"FAIL" strings
+        if val in [True, "OK"]: return f"{OK}{char}{RESET}"
+        return f"{FAIL}-{RESET}"
     
+    caps = f"{_cap('dnssec', 'S')} {_cap('edns0', 'E')} {_cap('cookies', 'K')} {_cap('qname_min', 'Q')} {_cap('ecs', 'X')}"
+
     openres = data.get('open_resolver', 'SAFE')
     if openres == "OPEN": openres_clr = FAIL
     elif openres == "TIMEOUT": openres_clr = WARN
@@ -118,9 +155,14 @@ def print_infra_detail(srv, data):
     alive_str = f"{OK}ALIVE{RESET}" if not data['is_dead'] else f"{FAIL}DEAD{RESET}"
     group_str = data.get('groups', '')
     if len(group_str) > 11: group_str = group_str[:8] + "..."
-        
-    # Layout: Group | Server | Ping | 53U | 53T | SEC | EDNS | DoT | DoH | OpenRes | Status
-    print(f"  {INFO}{group_str:11}{RESET} | {srv:15} | {ping_clr}{ping_str:16}{RESET} | {p53u_clr}{p53u_str:11}{RESET} | {p53t_clr}{p53t_str:11}{RESET} | {dsec_clr}{dsec_str:11}{RESET} | {edns_clr}{edns_str:11}{RESET} | {dot_clr}{dot_str:11}{RESET} | {doh_clr}{doh_str:11}{RESET} | {openres_clr}{openres_str:9}{RESET} | {alive_str}")
+    
+    # Granular Score
+    score = data.get('infrastructure_score', 0)
+    score_clr = get_score_color(score)
+    score_str = f"{score_clr}{score:3d}{RESET}"
+
+    # Layout: Group | Server | Ping | U53 | T53 | DoT | DoH | Sc | Caps | OpenRes | Status
+    print(f"  {INFO}{group_str:11}{RESET} | {srv:15} | {ping_clr}{ping_str:16}{RESET} | {p53u_clr}{p53u_str:10}{RESET} | {p53t_clr}{p53t_str:10}{RESET} | {dot_clr}{dot_str:5.5}{RESET} | {doh_clr}{doh_str:5.5}{RESET} | {score_str} | {caps} | {openres_clr}{openres_str:9}{RESET} | {alive_str}")
 
 def print_zone_detail(srv, domain, res):
     serial = res.get('serial', '?')
@@ -187,7 +229,12 @@ def print_zone_detail(srv, domain, res):
     if len(group_str) > 11:
         group_str = group_str[:8] + "..."
 
-    print(f"  {domain:30} | {INFO}{group_str:11}{RESET} | {srv:15} | {serial_str:18} | {lat_str} | {aa_str} | {axfr_clr}{axfr_str:18}{RESET}")
+    # Granular Score
+    score = res.get('zone_score', 0)
+    score_clr = get_score_color(score)
+    score_str = f"{score_clr}{score:3d}{RESET}"
+
+    print(f"  {domain:30} | {INFO}{group_str:11}{RESET} | {srv:15} | {serial_str:18} | {lat_str} | {score_str} | {aa_str} | {axfr_clr}{axfr_str:18}{RESET}")
 
 def print_zone_audit_block(domain, audit):
     """Print a concise summary of advanced zone diagnostics."""
@@ -221,13 +268,19 @@ def print_zone_audit_block(domain, audit):
 def print_warning(msg):
     print(f"  {WARN}{msg}{RESET}")
 
-def print_phase_footer(name, metrics, duration: float = 0.0):
-    print(f"  {BOLD}--- Phase {name} Summary ---{RESET}")
+def print_phase_footer(name, metrics, duration: float = 0.0, insights=None):
+    print(f"  {BOLD}{UNDER}--- Phase {name} - Analytical Insights ---{RESET}")
     for k, v in metrics.items():
         print(f"  {k:20}: {v}")
+    
+    if insights:
+        print(f"  {BOLD}Analytics:{RESET}")
+        for k, v in insights.items():
+            print(f"  ↳ {k:18}: {v}")
+            
     if duration > 0.0:
         print(f"  {'Execution Time':20}: {duration:.2f}s")
-    print("-" * 40)
+    print("-" * 50)
 
 def format_result(target, group, server, rtype, status, latency, is_consistent, warn_ms=150, crit_ms=500):
     if status == "NOERROR" or status == "NXDOMAIN":
@@ -270,59 +323,69 @@ def print_progress(current, total, prefix="", length=30):
     print(f"\r  {INFO}{prefix}{RESET} |{bar}| {percent:3.0f}% ({current}/{total})", end="", flush=True)
     if current == total: print() # New line when done
 
-def print_legend_phase1():
-    """Legend for Phase 1: Infrastructure."""
-    print(f"\n  {BOLD}PHASE 1 LEGEND (Infrastructure):{RESET}")
-    print(f"  {INFO}COLUMNS:{RESET}")
-    print(f"  - {BOLD}GROUP{RESET}      : Server profile/category (CORE, GOOGLE, etc.).")
-    print(f"  - {BOLD}IP ADDRESS{RESET} : Network address of the DNS server.")
-    print(f"  - {BOLD}PING (R/S){RESET} : Packets Received/Sent and Packet Loss (%).")
-    print(f"  - {BOLD}53 UDP/TCP{RESET} : Availability of DNS service on standard port 53.")
-    print(f"  - {BOLD}DNSSEC/EDNS{RESET}: Support for security extensions and large payloads.")
-    print(f"  - {BOLD}DoT/DoH{RESET}    : DNS-over-TLS (853) and DNS-over-HTTPS (443) support.")
-    print(f"  - {BOLD}OpenRes{RESET}    : Open Resolver detection (Recursion safety).")
-    print(f"  {INFO}VALUES & COLORS:{RESET}")
-    print(f"  - {OK}OK (ms){RESET}    : Service reachable and responding (Green < 100ms, Yellow/Magenta Alert).")
-    print(f"  - {WARN}P_ONLY{RESET}     : Port is OPEN, but DNS Service is NOT responding.")
-    print(f"  - {FAIL}CLOSE/FAIL{RESET} : Port or Service is definitively unreachable.")
-    print(f"  - {OK}SAFE{RESET}       : Properly protected (Not an open resolver).")
-    print(f"  - {FAIL}OPEN{RESET}       : Vulnerable open resolver (RECURSION ENABLED).")
-    print(f"  - {OK}ALIVE{RESET}/{FAIL}DEAD{RESET}: Server's final reachability status.")
-    print("-" * 140)
+def print_legend_phase1_table():
+    """Legend for Phase 1 results table (Infrastructure)."""
+    print(f"\n  {BOLD}PHASE 1: TECHNICAL COLUMN LEGEND{RESET}")
+    print(f"  - {BOLD}PING [R/S % ms]{RESET} : [Received/Sent Packets] [Loss %] [Latency in ms].")
+    print(f"  - {BOLD}U53 / T53{RESET}       : Standard DNS Port 53 Availability (UDP / TCP).")
+    print(f"  - {BOLD}DoT / DoH{RESET}       : Encrypted DNS Support (DNS-over-TLS Port 853 / DNS-over-HTTPS Port 443).")
+    print(f"  - {BOLD}PROBE STATUSES{RESET}   : {OK}OK(ms){RESET} = Service Up | {WARN}P_ONLY{RESET} = Port Open but Service Failed | {FAIL}CLOSE{RESET} = Port Closed.")
+    print(f"  - {BOLD}Sc{RESET}               : Individual Infra Score (0-100) based on Weights (Ping 20%, Probes 40%, Security 40%).")
+    print(f"  - {BOLD}Caps (S E K Q X){RESET}: {OK}S{RESET}EC (DNSSEC), {OK}E{RESET}DNS, {OK}K{RESET}ookies, {OK}Q{RESET}name-Min, {OK}X{RESET}=ClientSubnet.")
+    print(f"  - {BOLD}OpenRes{RESET}          : Recursion safety ({OK}SAFE{RESET}, {FAIL}OPEN{RESET}=Vulnerable to DDoS Amplification).")
+    print("-" * 145)
 
-def print_legend_phase2():
-    """Legend for Phase 2: Zones."""
-    print(f"\n  {BOLD}PHASE 2 LEGEND (Zone Integrity):{RESET}")
-    print(f"  {INFO}COLUMNS:{RESET}")
-    print(f"  - {BOLD}Domain{RESET}      : The DNS zone being tested.")
-    print(f"  - {BOLD}SOA Serial{RESET}  : Zone version ID (must be identical across all servers).")
-    print(f"  - {BOLD}Lat{RESET}         : Response time for the SOA query.")
-    print(f"  - {BOLD}AA{RESET}          : Authoritative Answer flag (Expected for Zone Masters/Slaves).")
-    print(f"  - {BOLD}AXFR Status{RESET} : Zone Transfer vulnerability assessment.")
-    print(f"  {INFO}VALUES & COLORS:{RESET}")
-    print(f"  - {OK}OK(serial){RESET}  : Zone is synchronized and healthy.")
-    print(f"  - {FAIL}FAIL(serial){RESET}: Desynchronized zone (Delayed propagation or outdated serial).")
-    print(f"  - {OK}YES{RESET}/{FAIL}NO{RESET}       : AA Flag (YES is healthy, NO indicates Lame Delegation).")
-    print(f"  - {OK}REFUSED{RESET}     : Secure (AXFR properly blocked).")
-    print(f"  - {FAIL}XFR-OK{RESET}     : VULNERABILITY (Zone transfer allowed on non-secondary server).")
-    print(f"  {INFO}ZONE AUDIT DETAILS:{RESET}")
-    print(f"  - {BOLD}DNSSEC{RESET}      : Zone signing status ({OK}SIGNED{RESET} or {WARN}UNSIGNED{RESET}).")
-    print(f"  - {BOLD}TIMERS{RESET}      : SOA Timer compliance ({OK}RFC-OK{RESET} or {FAIL}NON-COMPLIANT{RESET} with RFC 1912).")
-    print(f"  - {BOLD}MNAME{RESET}       : Primary Master Server reachability ({OK}UP{RESET}, {FAIL}DOWN{RESET}, or {WARN}UNKNOWN{RESET}).")
-    print(f"  - {BOLD}WEB-RISK{RESET}    : Checks if HTTP/HTTPS ports (80/443) are exposed on the DNS server ({OK}SAFE{RESET} or {FAIL}EXPOSED!{RESET}).")
+def print_legend_phase1_analytics():
+    """Legend for Phase 1 analytical summary."""
+    print(f"  {BOLD}PHASE 1: ANALYTICS CRITERIA{RESET}")
+    print(f"  - {BOLD}Infra Health{RESET} : Average health score across infrastructure. 100% = All services up with modern security.")
+    print(f"  - {BOLD}Adoption{RESET}     : Percentage of servers deployed with DoH, DoT, DNSSEC and Cookies.")
+    print(f"  - {BOLD}Net-Health{RESET}   : Network SLA index (Latency vs Warn/Crit limits configured in settings.ini).")
+    print("-" * 50)
+
+def print_legend_phase2_table():
+    """Legend for Phase 2 results table (Zone Integrity)."""
+    print(f"\n  {BOLD}PHASE 2: TECHNICAL COLUMN LEGEND{RESET}")
+    print(f"  - {BOLD}SOA Serial{RESET}  : Zone Version ID. {OK}OK{RESET} = Servers in Sync | {FAIL}FAIL{RESET} = Desynchronized (Desync).")
+    print(f"  - {BOLD}Sc{RESET}          : Zone Compliance Score (0-100) based on Weights (Sync 30%, AA 20%, AXFR 30%, CAA 20%).")
+    print(f"  - {BOLD}AA{RESET}          : Authoritative Answer flag. {OK}YES{RESET} = Correct | {FAIL}NO{RESET} = Lame Delegation detected.")
+    print(f"  - {BOLD}AXFR Status{RESET} : {OK}REFUSED{RESET} = Secure | {FAIL}XFR-OK{RESET} = Vulnerable to data leakage.")
+    print("-" * 120)
+
+def print_legend_phase2_analytics():
+    """Legend for Phase 2 analytical summary."""
+    print(f"  {BOLD}PHASE 2: ANALYTICS CRITERIA{RESET}")
+    print(f"  - {BOLD}Zone Compliance{RESET}: Overall adherence score to zone security and synchronization standards.")
+    print(f"  - {BOLD}Sync Health{RESET}    : Global consistency rate. 100% = All server serials match for all zones.")
+    print(f"  - {BOLD}CAA Adoption{RESET}   : Certificate Authority Authorization usage to prevent SSL hijacking.")
+    print("-" * 50)
+
+def print_legend_phase3_table():
+    """Legend for Phase 3 results table (Record Consistency)."""
+    print(f"\n  {BOLD}PHASE 3: TECHNICAL COLUMN LEGEND{RESET}")
+    print(f"  - {BOLD}Status{RESET}      : {OK}NOERROR{RESET} (Success), {WARN}NXDOMAIN{RESET} (No exist), {FAIL}SERVFAIL/REFUSED/TIMEOUT{RESET}.")
+    print(f"  - {BOLD}Sync{RESET}        : Stability marker. {OK}OK{RESET} = Consistent results | {WARN}DIV!{RESET} = Flapping/Divergent records.")
+    print(f"  - {BOLD}↳ ! [Issue]{RESET} : Forensic findings like Dangling DNS, TTL logic errors, SPF/DMARC syntax.")
     print("-" * 115)
 
-def print_legend_phase3():
-    """Legend for Phase 3: Records."""
-    print(f"\n  {BOLD}PHASE 3 LEGEND (Record Consistency):{RESET}")
-    print(f"  {INFO}COLUMNS:{RESET}")
-    print(f"  - {BOLD}Type{RESET}        : Record type (A, AAAA, MX, TXT, etc.).")
-    print(f"  - {BOLD}Status{RESET}      : Query result (NOERROR, NXDOMAIN, TIMEOUT, etc.).")
-    print(f"  - {BOLD}Sync{RESET}        : Result stability across multiple sequential queries.")
-    print(f"  {INFO}VALUES & COLORS:{RESET}")
-    print(f"  - {OK}OK{RESET}           : Success (NOERROR) or intentional Negative Response.")
-    print(f"  - {FAIL}FAIL/ERROR{RESET}  : Protocol failure or service timeout.")
-    print(f"  - {OK}OK{RESET} (Sync)    : Stable result (All repeated queries returned identical data).")
-    print(f"  - {WARN}DIV!{RESET} (Sync)   : Divergence (Sequential queries returned different data - Flapping).")
-    print(f"  - {FAIL}↳ ! [Issue]{RESET} : Semantic findings (Dangling DNS, low TTL, SPF errors).")
-    print("-" * 115)
+def print_legend_phase3_analytics():
+    """Legend for Phase 3 analytical summary."""
+    print(f"  {BOLD}PHASE 3: ANALYTICS CRITERIA{RESET}")
+    print(f"  - {BOLD}Stability Index{RESET}: Percentage of queries that returned identical results across sequential checks.")
+    print(f"  - {BOLD}Finding Density{RESET}: Average volume of semantic issues detected per record query.")
+    print("-" * 50)
+
+def print_legend_summary():
+    """Legend for Final Audit Summary."""
+    print(f"  {BOLD}SUMMARY LEGEND & SCORING CRITERIA:{RESET}")
+    print(f"  {INFO}SECURITY SCORE (0-100):{RESET}")
+    print(f"  - {BOLD}DNSSEC/CAA{RESET}   : Validates trust chain (DS/RRSIG) and SSL issuance policies.")
+    print(f"  - {BOLD}DNS Cookies{RESET}  : RFC 7873 resistance against IP spoofing and amplification.")
+    print(f"  - {BOLD}AXFR Block{RESET}   : Evaluation of zone transfer security (RFC 5936).")
+    print(f"  - {BOLD}OpenResolver{RESET} : Detection of recursive infrastructure exposed to the public internet.")
+    print(f"  {INFO}PRIVACY SCORE (0-100):{RESET}")
+    print(f"  - {BOLD}DoT/DoH{RESET}      : DNS encryption (TLS/HTTPS) to prevent ISP/MITM snooping.")
+    print(f"  - {BOLD}QNAME-Min{RESET}    : RFC 7816 reduction in query data leakage to upstream servers.")
+    print(f"  - {BOLD}ECS Masking{RESET}  : RFC 7871 client privacy protection (Subnet masking).")
+    print(f"  {INFO}GRADING SYSTEM:{RESET}")
+    print(f"  - {OK}A+ / A (90+){RESET}   : Professional compliance | {WARN}C / D (60-80){RESET} : Warnings | {FAIL}F (<60){RESET} : Critical Risks.")

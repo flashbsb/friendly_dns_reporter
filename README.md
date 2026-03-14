@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v5.2.1)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v6.5.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -15,9 +15,14 @@ This tool has been completely rewritten in Python to ensure native compatibility
 
 ## 🚀 Features (Buzzwords)
 
-*   **Forensic Execution Logging (v5.2.1)**: Detailed recording of every diagnostic event (probes, queries, findings) for forensic analysis. Conditional via `.ini`.
-*   **Interactive Terminal Legends (v5.2.0)**: Automatic legends after each diagnostic phase explaining columns, colors, and statuses. Toggled via `.ini`.
-*   **UI Transparency & Colorization (v5.1.0)**: Phase 2 reports exact DNS error codes (e.g., TIMEOUT). Phase 3 sync statuses are fully colorized.
+*   **Extended Forensic Legends (v6.5.0)**: Exhaustive definitions for PING, technical statuses, and scoring weights.
+*   **Triple Double Legend System (v6.4.0)**: Sequential legends (Technical Table -> Analysis Summary) for every phase.
+*   **Analytical Legends (v6.3.0)**: Contextual explanations for forensic indices.
+*   **Granular Forensic Scoring (v6.2.0)**: Individual Server and Zone health scores (0-100).
+*   **Auditor Intelligence (v6.1.0)**: Advanced analytical insights (Adoption rates, Sync health, Stability Index).
+*   **Privacy & Security Scoring (v6.0.0)**: Forensic markers assessment (ECS, QNAME-M, Cookies, CAA, DNSSEC).
+*   **Forensic Execution Logging**: Detailed recording of every diagnostic event for technical analysis.
+*   **Interactive Terminal Legends (v5.2.0)**: Automatic legends after each phase explaining columns and colors.
 *   **Deep Service Validation (v5.0.0)**: Differentiates between Port status (socket) and Service status (real DNS response) for UDP, TCP, DoT, and DoH.
 *   **Smart Loader (v5.0.0)**: Automatic detection of CSV delimiters (`,` or `;`) and Type-aware queries (Recursive vs. Authoritative).
 *   **Selective Diagnostics**: Run only the phases you need using CLI flags (`-p 1,3`).
@@ -43,10 +48,12 @@ graph TD
         Phase1 --> PortCheck[Port Socket Check]
         PortCheck --> ServiceCheck[Deep Service Validation: UDP, TCP, DoT, DoH]
         ServiceCheck --> CircuitBreaker{Service Functional?}
-        CircuitBreaker -- YES --> Legend1[UI Legend Phase 1]
+        CircuitBreaker -- YES --> LegendT1[UI Legend: Technical Columns]
+        LegendT1 --> Insights1[Analytical Summary: Infrastructure Health]
+        Insights1 --> LegendA1[UI Legend: Forensic Indices]
     end
 
-    Legend1 --> Phase2
+    LegendA1 --> Phase2
 
     CircuitBreaker -- NO --> Skip[Skip Phase 2 & 3 for this Server]
     CircuitBreaker -- YES --> Phase2
@@ -55,20 +62,24 @@ graph TD
         Phase2 --> Recursion[Type-Aware Recursion & Smart Fallback]
         Recursion --> Sync[SOA Serial Sync]
         Sync --> AA[Lame Delegation AA Flag]
-        AA --> Advanced[Audit: RFC 1912 & NS Consistency]
-        Advanced --> Legend2[UI Legend Phase 2]
+        AA --> LegendT2[UI Legend: Technical Columns]
+        LegendT2 --> Insights2[Analytical Summary: Zone Compliance]
+        Insights2 --> LegendA2[UI Legend: Forensic Indices]
     end
 
-    Phase2 --> Phase3
+    LegendA2 --> Phase3
 
     subgraph "Phase 3: Semantic Audit"
         Phase3 --> Parallel[Type-Aware Queries: RD bit based on Group Type]
         Phase3 --> Semantic[SPF/DMARC Syntax & Security]
         Phase3 --> Chain[Dangling DNS & MX Target Test]
+        Chain --> LegendT3[UI Legend: Technical Columns]
+        LegendT3 --> Insights3[Analytical Summary: Stability Index]
+        Insights3 --> LegendA3[UI Legend: Forensic Indices]
     end
 
-    Phase3 --> Legend3[UI Legend Phase 3]
-    Legend3 --> Reports[Generate HTML / JSON / CSV / Terminal]
+    LegendA3 --> Scoring[Calculate Privacy & Security Scores]
+    Scoring --> Reports[Generate HTML / JSON / CSV / Terminal]
     Reports --> End((End))
     Skip --> Reports
 ```

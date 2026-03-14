@@ -67,6 +67,14 @@ class Settings:
     def enable_execution_log(self):
         return self.get_bool("REPORTS", "ENABLE_EXECUTION_LOG", True)
 
+    @property
+    def enable_privacy_score(self):
+        return self.get_bool("REPORTS", "ENABLE_PRIVACY_SCORE", True)
+
+    @property
+    def enable_security_score(self):
+        return self.get_bool("REPORTS", "ENABLE_SECURITY_SCORE", True)
+
     # --- DNS ENGINE ---
     @property
     def dns_timeout(self):
@@ -152,6 +160,22 @@ class Settings:
     def enable_doh_check(self):
         return self.get_bool("ADVANCED_CHECKS", "ENABLE_DOH_CHECK", True)
 
+    @property
+    def enable_ecs_check(self):
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_ECS_CHECK", True)
+
+    @property
+    def enable_qname_min_check(self):
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_QNAME_MIN_CHECK", True)
+
+    @property
+    def enable_dns_cookies_check(self):
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_DNS_COOKIES_CHECK", True)
+
+    @property
+    def enable_dnssec_chain_val(self):
+        return self.get_bool("ADVANCED_CHECKS", "ENABLE_DNSSEC_CHAIN_VAL", False)
+
     # --- ZONE TESTS ---
     @property
     def enable_axfr_check(self):
@@ -170,6 +194,10 @@ class Settings:
     @property
     def enable_web_risk_check(self):
         return self.get_bool("ZONE_TESTS", "ENABLE_WEB_RISK_CHECK", True)
+
+    @property
+    def enable_caa_check(self):
+        return self.get_bool("ZONE_TESTS", "ENABLE_CAA_CHECK", True)
 
     @property
     def enable_soa_timer_audit(self):

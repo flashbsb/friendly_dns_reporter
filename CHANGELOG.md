@@ -2,7 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
-## [5.2.1] - 2026-03-14
+## [6.5.0] - 2026-03-14
+### Added
+- **Extended Forensic Legends**:
+  - Comprehensive definitions for all technical statuses (SERVFAIL, DIV!, P_ONLY, etc.).
+  - Detailed explanation of PING formatting `[R/S % ms]`.
+  - Transparent disclosure of scoring weights for Infrastructure and Zone compliance.
+  - New Grading System (A+) legend in the final summary.
+
+### Added
+- **Triple Double Legend System**:
+  - Split technical legends (tables) from analytical legends (summaries) in all phases.
+  - Legends are now displayed sequentially: Table -> Technical Legend -> Summary -> Analytics Legend.
+  - Improved clarity on forensic scoring criteria and SLA health indices.
+
+### Added
+- **Analytical Legends**:
+  - Detailed context for Phase Summaries (Infrastructure Health, Zone Compliance, Stability Index).
+  - Repositioned legends to appear immediately after analytical summaries for better readability.
+  - Explanation of "Finding Density" and "Network Health SLA" criteria.
+
+### Added
+- **Granular Forensic Scoring**:
+  - **Individual Server Scores (Phase 1)**: Each server now has a 0-100 health score directly in the table.
+  - **Individual Zone Scores (Phase 2)**: Each zone-per-server record now displays a compliance score.
+  - **Infrastructure Health Index**: Aggregated average of all server health metrics in Phase 1 footer.
+  - **Zone Compliance Index**: Aggregated average of all zone integrity metrics in Phase 2 footer.
+- **UI Layout Optimization**: Streamlined headers (`U53`, `T53`) to fit new forensic data on standard terminals.
+
+### Added
+- **Auditor Intelligence (Advanced Analytics)**:
+  - **Protocol Adoption Rate (Phase 1)**: Insights into modern protocol deployment (% DoT, DoH, DNSSEC).
+  - **Network Health SLA (Phase 1)**: Statistical comparison of latencies against configured SLAs.
+  - **Synchronization Health (Phase 2)**: Percentage-based global consistency tracking per zone.
+  - **Stability Index (Phase 3)**: Quantitative measure of result stability (% of non-flapping queries).
+  - **Finding Density (Phase 3)**: Average counts of semantic issues per query/domain.
+- **Global Executive Grade**: Automated A-F letter grade in the final summary for quick management assessment.
+- **Enhanced UI Footers**: Redesigned phase summaries with nested analytical insights.
+
+### Added
+- **Privacy & Security Scores**: Integrated a sophisticated scoring engine that evaluates DNS health based on multiple forensic metrics (0-100 score).
+- **Advanced Diagnostic "Caps"**: Introduced detection for:
+  - **DNS Cookies (RFC 7873)**: Protection against amplification.
+  - **QNAME Minimization (RFC 7816)**: Privacy protection.
+  - **EDNS Client Subnet (ECS)**: Network performance vs privacy tracking.
+- **CAA (Certificate Authority Authorization)**: Automatic check for domain certificate issuance policies in Phase 2.
+- **Final Summary Legend**: New descriptive legend explaining the Security/Privacy scoring criteria and consistency metrics.
+- **Improved UI Layout**: Compact "Capabilities" column in Phase 1 and updated legend systems.
+- **Return-based Architecture**: Data engine now returns structural results, enabling complex post-processing and scoring.
+
+### Changed
+- **Major Release**: Project elevated to "Professional Suite" status with advanced forensic depth.
+- **Global Table Layout**: Optimized Phase 1 table to fit more technical markers in standard terminal widths.
+
 ### Added
 - **Forensic Execution Logging**: Introduced a high-detail logging system that records every diagnostic action (probes, queries, findings) for technical forensic analysis.
 - **Conditional Logging Trigger**: Added `ENABLE_EXECUTION_LOG` in `settings.ini` to toggle detailed execution logging (Default: `true`).

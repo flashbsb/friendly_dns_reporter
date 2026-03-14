@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER
 =============================================================================
-Version: 5.2.1
+Version: 6.5.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -277,6 +277,11 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
             logging.info(f"[PHASE 1] Server {srv}: Open Resolver: {opn_st} ({opn_lat:.1f}ms)")
             res["open_resolver"] = opn_st
             res["open_resolver_lat"] = opn_lat
+            
+            # v6.0.0 Privacy & Advanced Protocol Checks
+            res["ecs"] = dns_engine.check_ecs_support(srv) if settings.enable_ecs_check else False
+            res["qname_min"] = dns_engine.check_qname_minimization(srv) if settings.enable_qname_min_check else False
+            res["cookies"] = dns_engine.check_dns_cookies(srv) if settings.enable_dns_cookies_check else False
         
         # Traceroute removed as requested (unused in UI)
         
@@ -291,20 +296,57 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         list(executor.map(_check_server, servers))
         
+    # Calculate individual scores
+    for srv in infra_results:
+        infra_results[srv]['infrastructure_score'] = calculate_server_score(infra_results[srv])
+
     # Order results by group then by server IP
     sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', ''), x[0]))
     ui.print_phase_header("1: Server Infrastructure")
     for srv, res in sorted_infra:
+        if settings.enable_execution_log:
+            logging.info(f"[PHASE 1] INFRA DETAIL: Server={srv}, Score={res.get('infrastructure_score', 0)}")
         ui.print_infra_detail(srv, res)
         
     # Phase Summary
+    # Phase 1 Analytics
     alive = sum(1 for r in infra_results.values() if not r['is_dead'])
     dead = len(infra_results) - alive
+    
+    insights = {}
+    if alive > 0:
+        # Aggregated Health Index
+        avg_health = sum(r.get('infrastructure_score', 0) for r in infra_results.values() if not r['is_dead']) / alive
+        insights["Infrastructure Health"] = f"{avg_health:.1f}% (Global Index)"
+        
+        # Protocol Adoption
+        dot_ok = sum(1 for r in infra_results.values() if r.get('dot') == "OK")
+        doh_ok = sum(1 for r in infra_results.values() if r.get('doh') == "OK")
+        sec_ok = sum(1 for r in infra_results.values() if r.get('dnssec') == "OK")
+        cook_ok = sum(1 for r in infra_results.values() if r.get('cookies') is True)
+        
+        adoption = ((dot_ok + doh_ok + sec_ok + cook_ok) / (alive * 4)) * 100
+        insights["Protocol Adoption"] = f"{adoption:.1f}% (Modern Stack)"
+        
+        # Network Health vs SLAs
+        avg_lat = sum(r.get('latency', 0) for r in infra_results.values() if not r['is_dead']) / alive
+        sla_health = max(0, 100 - (avg_lat / settings.ping_latency_warn * 50)) # Very rough health metric
+        insights["Network Health"] = f"{sla_health:.1f}% (Latency SLA)"
+
     phase_duration = time.time() - phase_start_time
     if settings.enable_ui_legends:
-        ui.print_legend_phase1()
+        ui.print_legend_phase1_table()
 
-    ui.print_phase_footer("1: Infrastructure", {"Total Servers": len(infra_results), "Status Alive": alive, "Status Dead": dead}, phase_duration)
+    ui.print_phase_footer("1: Infrastructure", 
+                         {"Total Servers": len(infra_results), "Status Alive": alive, "Status Dead": dead}, 
+                         phase_duration, 
+                         insights)
+    
+    if settings.enable_execution_log and insights:
+        logging.info(f"[PHASE 1] ANALYTICS: {insights}")
+
+    if settings.enable_ui_legends:
+        ui.print_legend_phase1_analytics()
 
     return infra_results
 
@@ -428,6 +470,9 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 axfr_ok, axfr_msg = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED")
                 logging.info(f"[PHASE 2] Zone {domain} on {srv}: SOA Serial: {serial}, AXFR: {axfr_ok} ({axfr_msg})")
                 
+                caa_ok, caa_recs = dns_engine.validate_caa(srv, domain) if settings.enable_caa_check else (False, [])
+                logging.info(f"[PHASE 2] Zone {domain} on {srv}: CAA Records: {len(caa_recs)}")
+                
                 res = {
                     "domain": domain, "server": srv, "group": group_name,
                     "serial": serial, "mname": mname, "rname": rname,
@@ -438,6 +483,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "axfr_allowed_groups": settings.axfr_allowed_groups,
                     "web_risks": risks,
                     "dnssec": is_signed,
+                    "caa": caa_recs,
                     "is_dead": False
                 }
                 local_results.append(res)
@@ -504,6 +550,10 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         futures = [executor.submit(_check_zone, dom, srvs) for dom, srvs in zones.items()]
         concurrent.futures.wait(futures)
         
+    # Calculate individual scores
+    for r in zone_results:
+        r['zone_score'] = calculate_zone_score(r)
+
     # Final sorted print
     ui.print_phase_header("2: Zone Integrity")
     last_domain = None
@@ -518,6 +568,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 
             last_domain = res['domain']
             
+        if settings.enable_execution_log:
+            logging.info(f"[PHASE 2] ZONE DETAIL: Domain={res['domain']}, Server={res['server']}, Score={res.get('zone_score', 0)}")
         ui.print_zone_detail(res['server'], res['domain'], res)
     
     # Print audit block for the LAST domain
@@ -530,15 +582,37 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     lame = sum(1 for r in zone_results if not r.get('aa', True) and r.get('status') == "NOERROR")
     inconsistent_ns = sum(1 for r in zone_results if r.get('ns_list') and len(set(tuple(r2.get('ns_list', [])) for r2 in zone_results if r2['domain'] == r['domain'])) > 1)
     
+    # Phase 2 Analytics
+    sync_ok = sum(1 for r in zone_results if r.get('serial') != "?" and r.get('status') == "NOERROR")
+    total_checks = len(zone_results)
+    
+    insights = {}
+    if total_checks > 0:
+        # Aggregated Health Index
+        avg_compliance = sum(r.get('zone_score', 0) for r in zone_results) / total_checks
+        insights["Zone Compliance"] = f"{avg_compliance:.1f}% (Global Index)"
+        
+        sync_health = (sync_ok / total_checks) * 100
+        insights["Sync Health"] = f"{sync_health:.1f}% (Global Consistency)"
+        
+        ca_adoption = sum(1 for r in zone_results if r.get('caa_recs', 0) > 0)
+        insights["CAA Adoption"] = f"{(ca_adoption / total_checks) * 100:.1f}% (SSL Policy)"
+
     phase_duration = time.time() - phase_start_time
     if settings.enable_ui_legends:
-        ui.print_legend_phase2()
+        ui.print_legend_phase2_table()
 
     ui.print_phase_footer("2: Zones", {
         "Domains Tested": len(zones),
         "Lame Delegations": lame,
-        "NS Inconsistencies": inconsistent_ns // 2 if inconsistent_ns > 0 else 0 # Rough estimate
-    }, phase_duration)
+        "NS Inconsistencies": inconsistent_ns // 2 if inconsistent_ns > 0 else 0
+    }, phase_duration, insights)
+
+    if settings.enable_execution_log and insights:
+        logging.info(f"[PHASE 2] ANALYTICS: {insights}")
+
+    if settings.enable_ui_legends:
+        ui.print_legend_phase2_analytics()
 
     return zone_results
 
@@ -680,14 +754,100 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                 ui.print_record_findings([f"Wildcard detection triggered! Zone resolves any sub-subdomain to: {wc_ans}"])
             last_zone_srv = current_zone_srv
     
-    # Phase Summary
+    # Phase 3 Analytics
     succ = sum(1 for r in results if r['status'] == "NOERROR")
     fail = len(results) - succ
+    
+    insights = {}
+    if len(results) > 0:
+        stable = sum(1 for r in results if r.get('is_consistent') is True)
+        insights["Stability Index"] = f"{(stable / len(results)) * 100:.1f}% (No DIV!)"
+        
+        findings_total = sum(len(r.get('findings', [])) for r in results)
+        insights["Finding Density"] = f"{findings_total / len(results):.2f} issues/query"
+
     phase_duration = time.time() - phase_start_time
     if settings.enable_ui_legends:
-        ui.print_legend_phase3()
+        ui.print_legend_phase3_table()
 
-    ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration)
+    ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration, insights)
+
+    if settings.enable_execution_log and insights:
+        logging.info(f"[PHASE 3] ANALYTICS: {insights}")
+
+    if settings.enable_ui_legends:
+        ui.print_legend_phase3_analytics()
+
+def calculate_server_score(res):
+    """Calculate a 0-100 score for a single server infrastructure."""
+    if res.get('is_dead'): return 0
+    
+    s = 0
+    # Security markers (60 pts)
+    if res.get('dnssec') == "OK": s += 15
+    if res.get('cookies') is True: s += 15
+    if res.get('edns0') == "OK": s += 10
+    if res.get('open_resolver') == "SAFE": s += 10
+    if not res.get('web_risks'): s += 10
+    
+    # Privacy markers (40 pts)
+    if res.get('dot') == "OK": s += 10
+    if res.get('doh') == "OK": s += 10
+    if res.get('qname_min') is True: s += 10
+    if res.get('ecs') is False: s += 10 # Masked/Disabled is good for privacy
+    
+    return s
+
+def calculate_zone_score(res):
+    """Calculate a 0-100 score for a single zone-on-server result."""
+    if res.get('status') != "NOERROR": return 0
+    
+    s = 0
+    # Sync & Identity (50 pts)
+    if res.get('zone_is_synced'): s += 30
+    if res.get('aa'): s += 20
+    
+    # Security Policies (50 pts)
+    if not res.get('axfr_vulnerable'): s += 20
+    if res.get('caa_recs', 0) > 0: s += 15
+    
+    audit = res.get('zone_audit', {})
+    if audit.get('dnssec'): s += 15
+    
+    return s
+
+def calculate_scores(infra_results, zone_results):
+    """Calculate aggregated Security and Privacy scores for global summary."""
+    if not infra_results: return 0, 0
+    
+    total_sec = 0
+    total_priv = 0
+    server_count = len(infra_results)
+    
+    for srv, res in infra_results.items():
+        # Security Score (0-100)
+        s = 0
+        if res.get('dnssec') == "OK": s += 20
+        if res.get('cookies') is True: s += 20
+        if res.get('edns0') == "OK": s += 10
+        if res.get('open_resolver') == "SAFE": s += 10
+        if not res.get('web_risks'): s += 10
+        vuln_axfr = any(z['axfr_vulnerable'] for z in zone_results if z['server'] == srv)
+        if not vuln_axfr: s += 20
+        has_caa = any(z.get('caa_recs', 0) > 0 for z in zone_results if z['server'] == srv)
+        if has_caa: s += 10
+        total_sec += s
+        
+        # Privacy Score (0-100)
+        p = 0
+        if res.get('dot') == "OK": p += 15
+        if res.get('doh') == "OK": p += 15
+        if res.get('qname_min') is True: p += 30
+        if res.get('ecs') is False: p += 20
+        if res.get('open_resolver') == "SAFE": p += 20
+        total_priv += p
+        
+    return int(total_sec / server_count), int(total_priv / server_count)
 
 def main():
     script_start_time = time.time()
@@ -698,7 +858,7 @@ def main():
         logging.info(f"Configuration loaded from {settings.path}")
         logging.info(f"Max Threads: {settings.max_threads}, Consistency Checks: {settings.consistency_checks}")
 
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.2.1)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v6.5.0)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -716,7 +876,7 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v5.2.1")
+    ui.print_banner("v6.5.0")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
@@ -800,18 +960,26 @@ def main():
         for label, path in paths.items():
             logging.info(f"Report Generated [{label}]: {path}")
     
-    total, success = len(results), sum(1 for r in results if r['status'] == "NOERROR")
+    total = len(results)
+    success = sum(1 for r in results if r['status'] == "NOERROR")
     div = sum(1 for r in results if r['internally_consistent'] == "DIV!")
     sync_issues = sum(1 for z in zone_results if z['serial'] == "?" or z['status'] == "UNREACHABLE")
     script_duration = time.time() - script_start_time
     
+    sec_score, priv_score = calculate_scores(infra_cache, zone_results)
+    avg_score = (sec_score + priv_score) / 2
+    grade = ui.format_grade(avg_score).replace("\033[92m", "").replace("\033[91m", "").replace("\033[93m", "").replace("\033[0m", "")
+    
     if settings.enable_execution_log:
-        logging.info(f"FINAL SUMMARY: Total={total}, Success={success}, Divergences={div}, ZoneIssues={sync_issues}, Duration={script_duration:.2f}s")
+        logging.info(f"FINAL SUMMARY: Total={total}, Success={success}, Divergences={div}, ZoneIssues={sync_issues}")
+        logging.info(f"FORENSIC SCORES: Security={sec_score}, Privacy={priv_score}, Grade={grade} ({avg_score:.1f}%)")
+        logging.info(f"Execution Time: {script_duration:.2f}s")
         logging.info("=============================================================================")
         logging.info("FRIENDLY DNS REPORTER FINISHED")
         logging.info("=============================================================================")
 
-    ui.print_summary_table(total, success, total-success, div, sync_issues, paths, script_duration)
+
+    ui.print_summary_table(total, success, total-success, div, sync_issues, paths, script_duration, sec_score, priv_score, settings.enable_ui_legends)
 
 if __name__ == "__main__":
     main()
