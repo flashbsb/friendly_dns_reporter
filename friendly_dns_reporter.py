@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER - PYTHON EDITION
 =============================================================================
-Version: 5.0.0
+Version: 5.1.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -58,19 +58,23 @@ from datetime import datetime
 from core.dns_engine import DNSEngine
 from core.connectivity import Connectivity
 from core.reporting import Reporter
+import core.validators as validators
 from core.config_loader import Settings
 import core.ui as ui
-import core.validators as validators
 
 # Silence DoH/DoT HTTPS warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Setup Logging
-def setup_logging(log_dir):
+def setup_logging(log_dir, use_timestamp=True):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     
-    log_file = os.path.join(log_dir, f"friendly_dns_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    if use_timestamp:
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file = os.path.join(log_dir, f"friendly_dns_{ts}.log")
+    else:
+        log_file = os.path.join(log_dir, "friendly_dns.log")
     
     logging.basicConfig(
         level=logging.INFO,
@@ -85,17 +89,54 @@ def setup_logging(log_dir):
     return log_file
 
 def load_datasets(domains_path, groups_path):
-    """Load and normalize CSV datasets."""
+    """Load and normalize CSV datasets with robust auto-detection."""
     def _read_csv(path):
         if not os.path.exists(path): return []
-        with open(path, 'r', encoding='utf-8-sig') as f:
-            reader = csv.DictReader(f, delimiter=';')
-            reader.fieldnames = [fn.lstrip('#').strip().upper() for fn in reader.fieldnames] if reader.fieldnames else []
-            return [{k.lstrip('#').strip().upper(): v for k, v in row.items() if k} for row in reader if any(row.values()) and not any(str(v).startswith('#') for v in row.values())]
+        try:
+            with open(path, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
+                if not content: return []
+                # Detect delimiter: comma, semicolon or tab
+                delim = ';'
+                for d in [';', ',', '\t']:
+                    if d in content.split('\n')[0]:
+                        delim = d
+                        break
+                
+                f.seek(0)
+                reader = csv.DictReader(f, delimiter=delim)
+                # Normalize field names: strip, uppercase, and remove BOM/hash
+                reader.fieldnames = [fn.lstrip('#').strip().upper() for fn in reader.fieldnames] if reader.fieldnames else []
+                
+                rows = []
+                for row in reader:
+                    if not any(row.values()) or any(str(v).startswith('#') for v in row.values()):
+                        continue
+                    # Strip all values
+                    clean_row = {k.strip().upper(): str(v).strip() for k, v in row.items() if k}
+                    rows.append(clean_row)
+                return rows
+        except Exception as e:
+            print(f"Error reading {path}: {e}")
+            return []
 
-    groups = _read_csv(groups_path)
-    domains = _read_csv(domains_path)
-    return domains, {g['NAME']: g['SERVERS'].split(',') for g in groups if g.get('NAME') and g.get('SERVERS')}
+    groups_raw = _read_csv(groups_path)
+    domains_raw = _read_csv(domains_path)
+    
+    # Process groups into a rich metadata dict
+    dns_groups = {}
+    for g in groups_raw:
+        name = g.get('NAME')
+        if name:
+            name = name.strip().upper() # Normalize
+            servers = g.get('SERVERS')
+            if servers:
+                dns_groups[name] = {
+                    "servers": [s.strip() for s in servers.split(',')],
+                    "type": g.get('TYPE', 'recursive').lower()
+                }
+            
+    return domains_raw, dns_groups
 
 def compare_consistency(queries, settings):
     """Check consistency between multiple query answers based on settings."""
@@ -247,79 +288,135 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     """Phase 2: Zone Integrity & SOA Synchronization."""
     phase_start_time = time.time()
     zone_results = []
-    zones = {}
+    zones = {} # domain -> list of (server, group_name)
     for entry in domains_raw:
         domain = entry.get('DOMAIN')
         if not domain: continue
         for group in (entry.get('GROUPS') or '').split(','):
-            group = group.strip()
+            group = group.strip().upper()
             if group in dns_groups:
-                zones.setdefault(domain, set()).update(dns_groups[group])
+                if domain not in zones: zones[domain] = []
+                for s in dns_groups[group]["servers"]:
+                    zones[domain].append((s.strip(), group))
 
-    def _check_zone(domain, servers):
-        results = []
+    def _check_zone(domain, srv_group_tuples):
+        local_results = []
         serials = {}
         timers_list = []
         dnssec_status = []
         web_risks = {}
         mname_target = None
 
-        for srv in servers:
+        for srv, group_name in srv_group_tuples:
+            srv = srv.strip()
             infra = infra_cache.get(srv, {})
+            
+            # Determine recursion based on specific group type for THIS server
+            is_recursive = dns_groups.get(group_name, {}).get("type") == "recursive"
+            
             if infra.get("is_dead"):
-                res = {"domain": domain, "server": srv, "serial": "N/A", "axfr_vulnerable": False, "axfr_detail": "PH1 FAIL", "status": "UNREACHABLE"}
-                results.append(res); serials[srv] = "N/A"
+                res = {
+                    "domain": domain, "server": srv, "group": group_name, 
+                    "serial": "N/A", "axfr_vulnerable": False, "axfr_detail": "PH1 FAIL", 
+                    "status": "UNREACHABLE", "is_dead": True
+                }
+                local_results.append(res); serials[srv] = "N/A"
                 continue
 
-            soa = dns_engine.query(srv, domain, "SOA")
-            ans = soa['answers'][0].split(' ') if soa['status'] == "NOERROR" and soa['answers'] else []
-            
-            serial = ans[2] if len(ans) > 2 else "?"
-            mname = ans[0] if len(ans) > 0 else "N/A"
-            rname = ans[1] if len(ans) > 1 else "N/A"
-            
-            # SOA Timers (Refresh, Retry, Expire, MinTTL)
-            if len(ans) >= 7 and settings.enable_soa_timer_audit:
-                try:
-                    t_ref, t_ret, t_exp, t_min = int(ans[3]), int(ans[4]), int(ans[5]), int(ans[6])
-                    timers_list.append((t_ref, t_ret, t_exp, t_min))
-                except: pass
-            
-            aa = soa.get('aa', False)
-            latency = soa.get('latency', 0)
-            
-            # DNSSEC Check
-            is_signed = dns_engine.check_zone_dnssec(srv, domain) if settings.enable_zone_dnssec_check else False
-            dnssec_status.append(is_signed)
-            
-            # Web Risk Check
-            risks = [] # Web Risk check removed (silent feature)
-            web_risks[srv] = risks
+            try:
+                # Harmonized recursion logic matching Phase 3
+                soa = dns_engine.query(srv, domain, "SOA", rd=is_recursive)
+                
+                # Smart Fallback: if preferred RD fails, try the alternative
+                if soa['status'] not in ["NOERROR", "NXDOMAIN"]:
+                    soa_fallback = dns_engine.query(srv, domain, "SOA", rd=not is_recursive)
+                    if soa_fallback['status'] == "NOERROR" or (soa_fallback['status'] == "NXDOMAIN" and soa['status'] != "NXDOMAIN"):
+                        soa = soa_fallback
 
-            # NS Check
-            ns_q = dns_engine.query(srv, domain, "NS")
-            ns_list = sorted([a.lower().rstrip('.') for a in ns_q['answers']]) if ns_q['status'] == "NOERROR" else []
-            
-            serials[srv] = serial
-            if mname != "N/A": mname_target = mname
-            
-            axfr_ok, axfr_msg = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED")
-            
-            res = {
-                "domain": domain, "server": srv, "group": infra.get('groups', 'UNCATEGORIZED'),
-                "serial": serial, "mname": mname, "rname": rname,
-                "axfr_vulnerable": axfr_ok, "axfr_detail": axfr_msg, "status": soa['status'],
-                "aa": aa, "latency": latency, "ns_list": ns_list,
-                "soa_latency_warn": settings.soa_latency_warn,
-                "soa_latency_crit": settings.soa_latency_crit,
-                "axfr_allowed_groups": settings.axfr_allowed_groups,
-                "web_risks": risks,
-                "dnssec": is_signed
-            }
-            results.append(res)
-            
+                # Robust extraction: check answers + authority
+                records = soa['answers'] + soa.get('authority', [])
+                soa_rec = next((r for r in records if " SOA " in f" {r} " or len(r.split()) >= 7), None)
+                if not soa_rec and records: soa_rec = records[0] # Fallback
+                
+                parts = soa_rec.split() if soa_rec else []
+                serial = "?"
+                mname = "N/A"
+                rname = "N/A"
+                timer_parts = []
+                
+                if parts:
+                    if "SOA" in parts:
+                        idx = parts.index("SOA")
+                        if len(parts) > idx + 3:
+                            mname = parts[idx+1]
+                            rname = parts[idx+2]
+                            serial = parts[idx+3]
+                        if len(parts) > idx + 7:
+                            timer_parts = parts[idx+4:idx+8]
+                    elif len(parts) >= 7:
+                        mname = parts[0]
+                        rname = parts[1]
+                        serial = parts[2]
+                        timer_parts = parts[3:7]
+                
+                # SOA Timers (Refresh, Retry, Expire, MinTTL)
+                if len(timer_parts) >= 4 and settings.enable_soa_timer_audit:
+                    try:
+                        t_ref, t_ret, t_exp, t_min = int(timer_parts[0]), int(timer_parts[1]), int(timer_parts[2]), int(timer_parts[3])
+                        timers_list.append((t_ref, t_ret, t_exp, t_min))
+                    except: pass
+                
+                aa = soa.get('aa', False)
+                latency = soa.get('latency', 0)
+                
+                # DNSSEC Check
+                is_signed = dns_engine.check_zone_dnssec(srv, domain) if settings.enable_zone_dnssec_check else False
+                dnssec_status.append(is_signed)
+                
+                # Web Risk Check
+                risks = [] # Web Risk check removed (silent feature)
+                web_risks[srv] = risks
+
+                # NS Check (Check answers and authority for referrals)
+                ns_q = dns_engine.query(srv, domain, "NS", rd=is_recursive)
+                
+                ns_records = ns_q['answers'] + ns_q.get('authority', [])
+                ns_list = []
+                for nr in ns_records:
+                    p = nr.split()
+                    if "NS" in p:
+                        ns_list.append(p[p.index("NS")+1].lower().rstrip('.'))
+                    elif len(p) == 1:
+                        ns_list.append(p[0].lower().rstrip('.'))
+                ns_list = sorted(list(set(ns_list)))
+                
+                serials[srv] = serial
+                if mname != "N/A": mname_target = mname
+                
+                axfr_ok, axfr_msg = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED")
+                
+                res = {
+                    "domain": domain, "server": srv, "group": group_name,
+                    "serial": serial, "mname": mname, "rname": rname,
+                    "axfr_vulnerable": axfr_ok, "axfr_detail": axfr_msg, "status": soa['status'],
+                    "aa": aa, "latency": latency, "ns_list": ns_list,
+                    "soa_latency_warn": settings.soa_latency_warn,
+                    "soa_latency_crit": settings.soa_latency_crit,
+                    "axfr_allowed_groups": settings.axfr_allowed_groups,
+                    "web_risks": risks,
+                    "dnssec": is_signed,
+                    "is_dead": False
+                }
+                local_results.append(res)
+            except Exception as e:
+                # Critical: Include group in error result so UI doesn't show UNCATEGORIZED
+                local_results.append({
+                    "domain": domain, "server": srv, "group": group_name,
+                    "serial": "?", "status": f"ERROR: {str(e)}", "axfr_vulnerable": False
+                })
+
         is_synced = len(set(s for s in serials.values() if s != "N/A")) <= 1
-        ns_lists = [r['ns_list'] for r in results if r['status'] == "NOERROR"]
+        ns_lists = [r['ns_list'] for r in local_results if r.get('status') == "NOERROR" and 'ns_list' in r]
         ns_consistent = len(set(tuple(l) for l in ns_lists)) <= 1 if ns_lists else True
         
         # ZONE AUDIT LOGIC
@@ -345,25 +442,24 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 
         if mname_target:
             # Check if MNAME matches any server we just tested
-            for r in results:
-                # This is a bit simplistic (name vs IP), but good for internal audits
-                if mname_target.lower().rstrip('.') in r['server'] or mname_target.lower().rstrip('.') in r['mname']:
-                     if r['status'] == "NOERROR":
+            for r in local_results:
+                srv_val = str(r.get('server', '')).lower()
+                mn_val = str(r.get('mname', '')).lower()
+                clean_target = mname_target.lower().rstrip('.')
+                if clean_target in srv_val or clean_target in mn_val:
+                     if r.get('status') == "NOERROR":
                          audit["mname_reachable"] = f"{r['server']} (UP)"
                          break
             if not audit["mname_reachable"]:
                 audit["mname_reachable"] = f"{mname_target} (UNKNOWN)"
 
-        # Glue Consistency (Placeholder for now as it requires more queries)
-        
-        # Attach audit data to results so UI can print it once
-        for r in results:
+        for r in local_results:
             r["zone_audit"] = audit
             r["zone_is_synced"] = is_synced
             r["ns_consistent"] = ns_consistent
 
         with lock:
-            zone_results.extend(results)
+            zone_results.extend(local_results)
             counters['done'] += 1
             ui.print_progress(counters['done'], total, "Checking Zones")
 
@@ -409,93 +505,103 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         
     return zone_results
 
-def run_phase3_records(tasks, dns_engine, settings, infra_cache, results, lock):
+def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock):
     """Phase 3: Parallel Record Consistency Check."""
     phase_start_time = time.time()
     counters = {'done': 0}
     total = len(tasks)
     
     def _worker(target, group_name, server, record_types):
-        # Circuit Breaker
-        infra = infra_cache.get(server, {})
-        if infra.get("is_dead"):
-            local_res = [{
-                "domain": target, "group": group_name, "server": server, "type": rtype,
-                "status": "UNREACHABLE", "latency": 0, "ping": "FAIL", "port53": "CLOSED",
-                "version": "DEAD", "recursion": "DEAD", "dot": "DEAD", "doh": "DEAD",
-                "nsid": None, "internally_consistent": "N/A", "answers": "SKIPPED: SERVER DOWN",
-                "is_consistent": True
-            } for rtype in record_types if rtype.strip()]
+        try:
+            # Circuit Breaker
+            infra = infra_cache.get(server, {})
+            if infra.get("is_dead"):
+                local_res = [{
+                    "domain": target, "group": group_name, "server": server, "type": rtype,
+                    "status": "UNREACHABLE", "latency": 0, "ping": "FAIL", "port53": "CLOSED",
+                    "version": "DEAD", "recursion": "DEAD", "dot": "DEAD", "doh": "DEAD",
+                    "nsid": None, "internally_consistent": "N/A", "answers": "SKIPPED: SERVER DOWN",
+                    "is_consistent": True
+                } for rtype in record_types if rtype.strip()]
+                with lock:
+                    results.extend(local_res)
+                    counters['done'] += 1
+                    ui.print_progress(counters['done'], total, "Record Consistency")
+                return
+
+            local_res = []
+            # Determine recursion based on group type
+            is_recursive = dns_groups.get(group_name, {}).get("type") == "recursive"
+            
+            for rtype in record_types:
+                rtype = rtype.strip().upper()
+                if not rtype: continue
+                
+                queries = []
+                for _ in range(settings.consistency_checks):
+                    res = dns_engine.query(server, target, rtype, rd=is_recursive, use_edns=settings.enable_edns_check)
+                    queries.append(res)
+                    if settings.sleep_time > 0: time.sleep(settings.sleep_time)
+                    
+                is_consistent = compare_consistency(queries, settings)
+                main_q = queries[0]
+                
+                # SEMANTIC AUDIT
+                findings = []
+                
+                # 1. TTL Analysis
+                ttl_ok, ttl_msg = validators.analyze_ttl(main_q.get('ttl', 0))
+                if not ttl_ok: findings.append(ttl_msg)
+                
+                # 2. Record Specific Syntax/Chain checks
+                spf_list = [a for a in main_q['answers'] if rtype == "TXT" and "v=spf1" in a]
+                dmarc_list = [a for a in main_q['answers'] if rtype == "TXT" and "v=DMARC1" in a]
+                
+                if spf_list:
+                    _, spf_issues = validators.validate_spf(spf_list)
+                    findings.extend(spf_issues)
+                    
+                if dmarc_list:
+                    _, dmarc_issues = validators.validate_dmarc(dmarc_list)
+                    findings.extend(dmarc_issues)
+
+                for ans in main_q['answers']:
+                    # Dangling DNS (CNAME / MX)
+                    if rtype in ["CNAME", "MX"]:
+                        # Extract target (MX has priority first)
+                        target_host = ans.split(' ')[1] if rtype == "MX" else ans.rstrip('.')
+                        chain_ok, chain_msg = dns_engine.resolve_chain(server, target_host, rtype)
+                        if not chain_ok:
+                            findings.append(f"Dangling {rtype} target: {target_host} ({chain_msg})")
+                        else:
+                            # MX Target Port 25 Check
+                            if rtype == "MX":
+                                 if not dns_engine.check_port_25(target_host):
+                                     findings.append(f"MX Target {target_host} UNREACHABLE on Port 25 (SMTP)")
+
+                entry = {
+                    "domain": target, "group": group_name, "server": server, "type": rtype,
+                    "status": main_q['status'], "latency": main_q['latency'],
+                    "ping": infra.get("ping", "N/A"), "port53": infra.get("port53u", "N/A"),
+                    "version": infra.get("version", "N/A"), "recursion": infra.get("recursion", "N/A"),
+                    "dot": infra.get("dot", "N/A"), "doh": infra.get("doh", "N/A"),
+                    "nsid": main_q.get("nsid"), "internally_consistent": "YES" if is_consistent else "DIV!",
+                    "answers": ", ".join(main_q['answers']),
+                    "is_consistent": is_consistent,
+                    "findings": findings
+                }
+                local_res.append(entry)
+            
             with lock:
                 results.extend(local_res)
                 counters['done'] += 1
                 ui.print_progress(counters['done'], total, "Record Consistency")
-            return
-
-        local_res = []
-        for rtype in record_types:
-            rtype = rtype.strip().upper()
-            if not rtype: continue
-            
-            queries = []
-            for _ in range(settings.consistency_checks):
-                res = dns_engine.query(server, target, rtype, use_edns=settings.enable_edns_check)
-                queries.append(res)
-                if settings.sleep_time > 0: time.sleep(settings.sleep_time)
-                
-            is_consistent = compare_consistency(queries, settings)
-            main_q = queries[0]
-            
-            # SEMANTIC AUDIT (v4.0.0)
-            findings = []
-            
-            # 1. TTL Analysis
-            ttl_ok, ttl_msg = validators.analyze_ttl(main_q.get('ttl', 0))
-            if not ttl_ok: findings.append(ttl_msg)
-            
-            # 2. Record Specific Syntax/Chain checks
-            spf_list = [a for a in main_q['answers'] if rtype == "TXT" and "v=spf1" in a]
-            dmarc_list = [a for a in main_q['answers'] if rtype == "TXT" and "v=DMARC1" in a]
-            
-            if spf_list:
-                _, spf_issues = validators.validate_spf(spf_list)
-                findings.extend(spf_issues)
-                
-            if dmarc_list:
-                _, dmarc_issues = validators.validate_dmarc(dmarc_list)
-                findings.extend(dmarc_issues)
-
-            for ans in main_q['answers']:
-                # Dangling DNS (CNAME / MX)
-                if rtype in ["CNAME", "MX"]:
-                    # Extract target (MX has priority first)
-                    target_host = ans.split(' ')[1] if rtype == "MX" else ans.rstrip('.')
-                    chain_ok, chain_msg = dns_engine.resolve_chain(server, target_host, rtype)
-                    if not chain_ok:
-                        findings.append(f"Dangling {rtype} target: {target_host} ({chain_msg})")
-                    else:
-                        # MX Target Port 25 Check
-                        if rtype == "MX":
-                             if not dns_engine.check_port_25(target_host):
-                                 findings.append(f"MX Target {target_host} UNREACHABLE on Port 25 (SMTP)")
-
-            entry = {
-                "domain": target, "group": group_name, "server": server, "type": rtype,
-                "status": main_q['status'], "latency": main_q['latency'],
-                "ping": infra.get("ping", "N/A"), "port53": infra.get("port53", "N/A"),
-                "version": infra.get("version", "N/A"), "recursion": infra.get("recursion", "N/A"),
-                "dot": infra.get("dot", "N/A"), "doh": infra.get("doh", "N/A"),
-                "nsid": main_q.get("nsid"), "internally_consistent": "YES" if is_consistent else "DIV!",
-                "answers": ", ".join(main_q['answers']),
-                "is_consistent": is_consistent,
-                "findings": findings
-            }
-            local_res.append(entry)
-        
-        with lock:
-            results.extend(local_res)
-            counters['done'] += 1
-            ui.print_progress(counters['done'], total, "Record Consistency")
+        except Exception as e:
+            with lock:
+                # Add a partial/error result instead of nothing
+                results.append({"domain": target, "group": group_name, "server": server, "type": "ERROR", "status": str(e), "latency": 0, "is_consistent": False})
+                counters['done'] += 1
+                ui.print_progress(counters['done'], total, "Record Consistency")
 
     counters = {'done': 0}
     total = len(tasks)
@@ -540,8 +646,9 @@ def run_phase3_records(tasks, dns_engine, settings, infra_cache, results, lock):
 def main():
     script_start_time = time.time()
     settings = Settings()
+    log_file = setup_logging(settings.log_dir, use_timestamp=settings.enable_report_timestamps)
     
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.0.0)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.1.0)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -559,7 +666,7 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v5.0.0")
+    ui.print_banner("v5.1.0")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
@@ -575,16 +682,16 @@ def main():
     active_groups = set()
     for entry in domains_raw:
         for group in (entry.get('GROUPS') or '').split(','):
-            active_groups.add(group.strip())
+            active_groups.add(group.strip().upper())
             
     # Collect servers and create a reverse mapping
     all_servers = set()
     srv_to_groups = {}
-    for group, srvs in dns_groups.items():
+    for group, g_meta in dns_groups.items():
         # Only process if it's an active group OR if filtering is disabled
         if not settings.only_test_active_groups or group in active_groups:
-            all_servers.update(srvs)
-            for s in srvs:
+            all_servers.update(g_meta["servers"])
+            for s in g_meta["servers"]:
                 if s not in srv_to_groups: srv_to_groups[s] = []
                 srv_to_groups[s].append(group)
     
@@ -616,21 +723,24 @@ def main():
             targets = [domain] + [f"{h.strip()}.{domain}" for h in (entry.get('EXTRA') or '').split(',') if h.strip()]
             for target in targets:
                 for group in (entry.get('GROUPS') or '').split(','):
-                    group = group.strip()
-                    for server in dns_groups.get(group, []):
+                    group = group.strip().upper()
+                    for server in dns_groups.get(group, {}).get("servers", []):
                         tasks.append((target, group, server, (entry.get('RECORDS') or '').split(',')))
-        run_phase3_records(tasks, dns_engine, settings, infra_cache, results, lock)
+        run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
 
     # Reporting & Summary
     reporter = Reporter(args.output)
     report_data = {"summary": {"total": len(results), "timestamp": datetime.now().isoformat()}, "infrastructure": infra_cache, "zones": zone_results, "results": results}
     
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    suffix = f"_{datetime.now().strftime('%Y%m%d_%H%M')}" if settings.enable_report_timestamps else ""
     
     paths = {}
-    if settings.enable_json_report: paths["JSON"] = reporter.export_json(report_data, f"report_{timestamp}.json")
-    if settings.enable_csv_report: paths["CSV"] = reporter.export_csv(results, f"report_{timestamp}.csv", list(results[0].keys()) if results else [])
-    if settings.enable_html_report: paths["HTML"] = reporter.generate_html(report_data, f"dashboard_{timestamp}.html")
+    if settings.enable_json_report: paths["JSON"] = reporter.export_json(report_data, f"report{suffix}.json")
+    if settings.enable_csv_report: paths["CSV"] = reporter.export_csv(results, f"report{suffix}.csv", list(results[0].keys()) if results else [])
+    if settings.enable_html_report: paths["HTML"] = reporter.generate_html(report_data, f"dashboard{suffix}.html")
+    
+    # Filter out empty paths (fixes request to not show 'Reports Generated' header if none created)
+    paths = {k: v for k, v in paths.items() if v}
     
     total, success = len(results), sum(1 for r in results if r['status'] == "NOERROR")
     div = sum(1 for r in results if r['internally_consistent'] == "DIV!")

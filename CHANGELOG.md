@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.1.0] - 2026-03-14
+### Added
+- **Colorized Sync Status**: The Phase 3 'Sync' column now displays `OK` in green for immediate visual confirmation of synchronized records.
+- **Diagnostics UI Transparency**: Phase 2 now displays the specific DNS error code (e.g., `TIMEOUT`, `REFUSED`, `SERVFAIL`) directly in the SOA Serial column when a query fails, eliminating generic placeholder outputs.
+- **Smart Recursion Fallback**: If a Phase 2 query fails with the configured recursion setting (RD bit), the engine automatically falls back to the opposite setting (e.g., iterative fallback for strict authoritative servers).
+- **Optional Filename Timestamps**: Added `ENABLE_REPORT_TIMESTAMPS` in `settings.ini` to control whether logs and reports include execution timestamps.
+
+### Fixed
+- **Settings Initialization Crashes**: Fixed `AttributeError` tracebacks in Phase 2 by correctly defining the `enable_soa_timer_audit` and `enable_zone_dnssec_check` properties in the `Settings` class (`core/config_loader.py`) and exposing them in `settings.ini`.
+- **Phase 2 Column Geometry**: Reordered Phase 2 terminal output layout to `Domain | Group | Server` for a more logical reading flow, aligning with Phase 3 design.
+- **Group Context Consistency**: Hardened the Phase 2 worker iterator to ensure that proper group names remain associated with failing servers, resolving instances where errors were labeled as `UNCATEGORIZED`.
+
+
 ## [5.0.0] - 2026-03-14
 ### Added
 - **Deep Service Validation**: Phase 1 now distinguishes between a port being "open" (socket) and the service being "functional" (responding to real DNS queries).
@@ -9,10 +22,19 @@ All notable changes to this project will be documented in this file.
 - **CLI Phase Selection**: Added `-p` / `--phases` argument (e.g., `-p 1,3`) to run specific diagnostic stages.
 - **Architecture Circuit Breaker**: Phase 1 results now act as an intelligent gatekeeper for Phase 2 and 3, preventing timeouts on dead services.
 
+### Fixed
+- **Phase 2 & 3 Data Stability**: Resolved critical variable scoping and silent error suppression issues that caused missing output in parallel workers.
+- **SOA Robust Extraction**: Enhanced DNS engine to extract SOA records from the Authority section for authoritative servers and referrals.
+- **UI Cleanliness**: Hidden the "Reports Generated" footer when no reports are actually created, as requested.
+- **CSV Robustness**: Further refined field stripping and normalization to prevent key mismatches between diagnostic phases.
+- **Infrastructure Context**: Fixed group name mapping in Phase 2 diagnostics by improving `infra_cache` lookup stability.
+
 ### Changed
 - **Phase 1 UI Reordering**: Reordered columns to `Group | IP Address` for better readability as requested.
 - **DNS Engine Expansion**: Added protocol-specific deep probing for UDP, TCP, DoT, and DoH.
 - **Settings Sanitization**: Renamed `[DIG_OPTIONS]` to `[DNS_ENGINE]` and variables to `DNS_TIMEOUT`/`DNS_RETRIES` to align with the Python-native architecture.
+- **Smart CSV Loader**: Implemented automatic delimiter detection (`;` vs `,`) for custom datasets.
+- **Data Consolidation**: Simplified `domains.csv` by removing redundant `STRATEGY` column; logic now uses `TYPE` from `groups.csv`.
 
 ## [4.1.0] - 2026-03-14
 ### Added

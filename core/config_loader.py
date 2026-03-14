@@ -55,6 +55,10 @@ class Settings:
     def enable_csv_report(self):
         return self.get_bool("REPORTS", "ENABLE_CSV_REPORT", True)
 
+    @property
+    def enable_report_timestamps(self):
+        return self.get_bool("REPORTS", "ENABLE_REPORT_TIMESTAMPS", True)
+
     # --- DNS ENGINE ---
     @property
     def dns_timeout(self):
@@ -158,6 +162,14 @@ class Settings:
     @property
     def enable_web_risk_check(self):
         return self.get_bool("ZONE_TESTS", "ENABLE_WEB_RISK_CHECK", True)
+
+    @property
+    def enable_soa_timer_audit(self):
+        return self.get_bool("ZONE_TESTS", "ENABLE_SOA_TIMER_AUDIT", True)
+
+    @property
+    def enable_zone_dnssec_check(self):
+        return self.get_bool("ZONE_TESTS", "ENABLE_ZONE_DNSSEC_CHECK", True)
 
     # --- CONSISTENCY ---
     @property

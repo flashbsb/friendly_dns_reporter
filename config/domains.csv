@@ -1,7 +1,7 @@
-# DOMAIN;GROUPS;STRATEGY;RECORDS;EXTRA
-google.com;GOOGLE,CLOUDFLARE;recursive;A,AAAA,TXT;www,mail
-wikipedia.org;QUAD9,OPENDNS;recursive;A,SOA;pt,en
-cisco.com;OPENDNS;recursive;MX,TXT;
-ietf.org;ROOT_SERVERS;iterative;NS;
-example.com;GOOGLE,CLOUDFLARE,QUAD9;recursive;A;
-fail-test.local;GOOGLE;recursive;A;
+# DOMAIN;GROUPS;RECORDS;EXTRA
+google.com;GOOGLE,CLOUDFLARE;A,AAAA,TXT;www,mail
+wikipedia.org;QUAD9,OPENDNS;A,SOA;pt,en
+cisco.com;OPENDNS;MX,TXT;
+ietf.org;ROOT_SERVERS;NS;
+example.com;GOOGLE,CLOUDFLARE,QUAD9;A;
+fail-test.local;GOOGLE;A;

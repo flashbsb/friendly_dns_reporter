@@ -46,6 +46,13 @@ class DNSEngine:
                     for rrset in response.answer:
                         for rr in rrset:
                             answers.append(rr.to_text())
+
+                # Also capture authority section (important for SOA/referrals)
+                authority = []
+                if response.authority:
+                    for rrset in response.authority:
+                        for rr in rrset:
+                            authority.append(rr.to_text())
                 
                 # Extract NSID if present
                 nsid = None
@@ -70,6 +77,7 @@ class DNSEngine:
                     "flags": dns.flags.to_text(response.flags).split(),
                     "aa": bool(response.flags & dns.flags.AA),
                     "answers": sorted(answers),
+                    "authority": sorted(authority),
                     "nsid": nsid,
                     "ttl": ttl,
                     "full_response": response.to_text()
@@ -78,9 +86,9 @@ class DNSEngine:
                 last_exception = e
                 continue # Retry
             except Exception as e:
-                return {"status": f"ERROR: {str(e)}", "latency": 0, "answers": []}
+                return {"status": f"ERROR: {str(e)}", "latency": 0, "answers": [], "authority": []}
         
-        return {"status": "TIMEOUT", "latency": self.timeout * 1000, "answers": []}
+        return {"status": "TIMEOUT", "latency": self.timeout * 1000, "answers": [], "authority": []}
 
     def check_axfr(self, server, zone):
         """Check if Zone Transfer (AXFR) is allowed."""

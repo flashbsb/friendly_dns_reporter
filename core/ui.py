@@ -28,8 +28,8 @@ def print_phase_header(name):
         print(f"  {INFO}{'GROUP':11}{RESET} | {INFO}{'IP ADDRESS':15}{RESET} | {'PING (R/S % ms)':16} | {'53 UDP':11} | {'53 TCP':11} | {'DNSSEC':11} | {'EDNS0':11} | {'DoT (853)':11} | {'DoH (443)':11} | {'OpenRes':9} | Status")
         print("-" * 140)
     elif "2" in name:
-        print(f"  {'Domain':25} -> {'Server':15} | {'Group':11} | {'SOA Serial':18} | {'Lat':7} | {'AA':4} | AXFR Status")
-        print("-" * 114)
+        print(f"  {'Domain':30} | {'Group':11} | {'Server':15} | {'SOA Serial':18} | {'Lat':7} | {'AA':4} | AXFR Status")
+        print("-" * 115)
     elif "3" in name:
         print(f"  {'Domain':30} | {'Group':11} | {'Server':15} | {'Type':5} | {'Status':12} | {'Lat':7} | Sync")
         print("-" * 115)
@@ -136,8 +136,12 @@ def print_zone_detail(srv, domain, res):
             serial_str = f"{OK}OK({serial}){RESET}"
         else:
             serial_str = f"{FAIL}FAIL({serial}){RESET}"
+    elif status != "NOERROR":
+        # Show the error status instead of '?' for clearer diagnostics
+        serial_str = f"{FAIL}{status:12}{RESET}"
     else:
-        serial_str = f"{FAIL}{serial:12}{RESET}"
+        # Query succeeded but no SOA record found
+        serial_str = f"{FAIL}NODATA      {RESET}"
         
     # AXFR Policy & Color Logic
     axfr_detail = res.get('axfr_detail', 'DISABLED')
@@ -183,7 +187,7 @@ def print_zone_detail(srv, domain, res):
     if len(group_str) > 11:
         group_str = group_str[:8] + "..."
 
-    print(f"  {domain:25} -> {srv:15} | {INFO}{group_str:11}{RESET} | {serial_str:18} | {lat_str} | {aa_str} | {axfr_clr}{axfr_str:18}{RESET}")
+    print(f"  {domain:30} | {INFO}{group_str:11}{RESET} | {srv:15} | {serial_str:18} | {lat_str} | {aa_str} | {axfr_clr}{axfr_str:18}{RESET}")
 
 def print_zone_audit_block(domain, audit):
     """Print a concise summary of advanced zone diagnostics."""
@@ -239,8 +243,8 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
     elif latency >= warn_ms:
         lat_clr = WARN
         
-    consistency_str = f" [{WARN}DIV!{RESET}]" if not is_consistent else ""
-    return f"  [{INFO}REC{RESET}] {target:30} | {INFO}{group:11}{RESET} | {server:15} | {rtype:5} | {status_clr}{status:12}{RESET} | {lat_clr}{latency:4.1f}ms{RESET} | {consistency_str if consistency_str else 'OK'}"
+    consistency_str = f" [{WARN}DIV!{RESET}]" if not is_consistent else f"{OK}OK{RESET}"
+    return f"  [{INFO}REC{RESET}] {target:30} | {INFO}{group:11}{RESET} | {server:15} | {rtype:5} | {status_clr}{status:12}{RESET} | {lat_clr}{latency:4.1f}ms{RESET} | {consistency_str}"
 
 def print_record_findings(findings):
     """Print semantic findings/warnings for a specific record."""
