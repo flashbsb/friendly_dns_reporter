@@ -22,13 +22,17 @@ def print_header(threads, consistency, target):
 
 def print_phase(name):
     print(f"\n{BOLD}{INFO}>>> PHASE {name}{RESET}")
+
+def print_phase_header(name):
     if "1" in name:
         print(f"  {'IP Address':15} | {'Group':11} | {'PING (R/S % ms)':16} | {'53 UDP':11} | {'53 TCP':11} | {'DNSSEC':11} | {'EDNS0':11} | {'DoT (853)':11} | {'DoH (443)':11} | {'OpenRes':9} | Status")
+        print("-" * 140)
     elif "2" in name:
-        print(f"  {'Domain':25} -> {'Server':15} | {'Serial':10} | AXFR Status")
+        print(f"  {'Domain':25} -> {'Server':15} | {'Group':11} | {'SOA Serial':18} | {'Lat':7} | {'AA':4} | AXFR Status")
+        print("-" * 114)
     elif "3" in name:
         print(f"  {'Group':10} | {'Target':30} -> {'Server':15} | {'Type':5} | {'Status':12}")
-    print("-" * 105)
+        print("-" * 105)
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0):
     print("\n" + "=" * 80)
@@ -123,11 +127,71 @@ def print_infra_detail(srv, data):
         
     print(f"  {srv:15} | {INFO}{group_str:11}{RESET} | {ping_clr}{ping_str:16}{RESET} | {p53u_clr}{p53u_str:11}{RESET} | {p53t_clr}{p53t_str:11}{RESET} | {dsec_clr}{dsec_str:11}{RESET} | {edns_clr}{edns_str:11}{RESET} | {dot_clr}{dot_str:11}{RESET} | {doh_clr}{doh_str:11}{RESET} | {openres_clr}{openres_str:9}{RESET} | {alive_str}")
 
-def print_zone_detail(srv, domain, serial, axfr_ok, status):
-    sync_clr = OK if serial != "?" and status == "NOERROR" else (WARN if status == "UNREACHABLE" else FAIL)
-    axfr_clr = FAIL if axfr_ok else OK
-    axfr_str = "VULNERABLE!" if axfr_ok else "SAFE"
-    print(f"  {domain:25} -> {srv:15} | {sync_clr}{serial:10}{RESET} | {axfr_clr}{axfr_str}{RESET}")
+def print_zone_detail(srv, domain, res):
+    serial = res.get('serial', '?')
+    status = res.get('status', 'ERROR')
+    axfr_ok = res.get('axfr_vulnerable', False)
+    aa = res.get('aa', False)
+    lat = res.get('latency', 0)
+    synced = res.get('zone_is_synced', True)
+    
+    # SOA Serial Status Formatting
+    if status == "NOERROR" and serial != "?":
+        if synced:
+            serial_str = f"{OK}OK({serial}){RESET}"
+        else:
+            serial_str = f"{FAIL}FAIL({serial}){RESET}"
+    else:
+        serial_str = f"{FAIL}{serial:12}{RESET}"
+        
+    # AXFR Policy & Color Logic
+    axfr_detail = res.get('axfr_detail', 'DISABLED')
+    allowed_groups = res.get('axfr_allowed_groups', [])
+    current_group = res.get('group', 'UNCATEGORIZED').upper()
+    is_expected = any(g in current_group for g in allowed_groups) if allowed_groups else False
+    
+    if axfr_ok:
+        axfr_str = f"XFR-OK ({axfr_detail.split(' ')[0]} nodes)" if "nodes" in axfr_detail else "XFR-OK"
+        axfr_clr = OK if is_expected else FAIL
+    else:
+        if "REFUSED" in axfr_detail or "REJECTED" in axfr_detail:
+            axfr_str = "REFUSED"
+            axfr_clr = WARN if is_expected else OK
+        elif "TIMEOUT" in axfr_detail:
+            axfr_str = "TIMEOUT"
+            axfr_clr = WARN
+        elif "DISABLED" in axfr_detail:
+            axfr_str = "DISABLED"
+            axfr_clr = RESET
+        else:
+            axfr_str = "ERROR"
+            axfr_clr = FAIL
+
+    # AA Status
+    aa_str = f"{OK}YES{RESET}" if aa else f"{FAIL} NO{RESET}"
+    if status != "NOERROR": aa_str = "--  "
+    
+    # Latency Color Logic
+    lat_warn = res.get('soa_latency_warn', 500)
+    lat_crit = res.get('soa_latency_crit', 1500)
+    
+    if lat >= lat_crit:
+        lat_clr = FAIL
+    elif lat >= lat_warn:
+        lat_clr = WARN
+    else:
+        lat_clr = OK
+        
+    lat_str = f"{lat_clr}{lat:4.0f}ms{RESET}" if status == "NOERROR" else " --  "
+    
+    group_str = res.get('group', 'UNCATEGORIZED')
+    if len(group_str) > 11:
+        group_str = group_str[:8] + "..."
+
+    print(f"  {domain:25} -> {srv:15} | {INFO}{group_str:11}{RESET} | {serial_str:18} | {lat_str} | {aa_str} | {axfr_clr}{axfr_str:18}{RESET}")
+
+def print_warning(msg):
+    print(f"  {WARN}{msg}{RESET}")
 
 def print_phase_footer(name, metrics, duration: float = 0.0):
     print(f"  {BOLD}--- Phase {name} Summary ---{RESET}")

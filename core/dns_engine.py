@@ -60,6 +60,8 @@ class DNSEngine:
                 return {
                     "status": status,
                     "latency": latency,
+                    "flags": dns.flags.to_text(response.flags).split(),
+                    "aa": bool(response.flags & dns.flags.AA),
                     "answers": sorted(answers),
                     "nsid": nsid,
                     "full_response": response.to_text()

@@ -2,20 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.7] - 2026-03-13
+### Added
+- **Contextual AXFR Policy Audit**: Introduced `AXFR_ALLOWED_GROUPS` in `settings.ini`.
+- **Objective AXFR Labeling**: Replaced "SAFE/VULN" with technical labels (`REFUSED`, `XFR-OK (n nodes)`, `TIMEOUT`).
+- **Policy Compliance Check**: Phase 2 now color-codes AXFR status based on intent: `REFUSED` is Green for general servers but Yellow/Red for expected secondaries. `XFR-OK` is Green for secondaries but Red for unauthorized servers.
+
+## [2.9.6] - 2026-03-13
+### Added
+- **SOA Sync Visualization**: The `SOA Serial` column now displays `OK(SERIAL)` in green if the zone is synchronized across all servers, or `FAIL(SERIAL)` in red if discrepancies are found.
+
+## [2.9.4] - 2026-03-13
+### Added
+- **Enhanced Zone Audit (Phase 2)**: 
+    - Integrated **Lame Delegation** detection by monitoring the Authoritative Answer (`AA`) flag.
+    - Added **SOA Query Latency** tracking to identify slow authoritative servers.
+    - Implemented **NS Record Consistency** checks across all servers in a group, alerting if a server returns a different set of name servers.
+    - Extracted and prepared detailed SOA metadata (MNAME, RNAME) for reporting.
+
 ## [2.9.2] - 2026-03-13
 ### Added
-- **Real-time Progress Indicators**: Integrated a dynamic status bar that tracks the completion percentage of parallel threads across all three diagnostic phases, preventing the UI from appearing frozen during long scans.
-- **Group-based Sorting**: Phase 1 infrastructure results are now automatically sorted alphabetically by Group name (and then by IP), providing a much cleaner and more organized terminal overview.
+- **Real-time Progress Indicators**: Integrated a dynamic status bar that tracks the completion percentage of parallel threads across all diagnostic phases.
+- **Group-based Sorting**: Phase 1 infrastructure results are now automatically sorted alphabetically by Group name.
 
 ## [2.9.1] - 2026-03-13
 ### Optimized
-- **OpenResolver Clarity**: Changed the `OpenRes` column output from obscure boolean flags (`SAFE`/`VULN`) to explicit DNS engine transaction states (`REFUSED`, `SERVFAIL`, `TIMEOUT`, `OPEN`) to avoid false positives on internal recursive servers.
-- **Phase 1 Layout**: Re-introduced the Server `Group` tracking column back into the Phase 1 terminal output table without sacrificing density.
-- **Timestamped Reports**: Automated report files (`.html`, `.csv`, `.json`) now dynamically append the exact execution timestamp (`YYYYMMDD_HHMM`) to prevent overwriting previous audit logs.
+- **OpenResolver Clarity**: Updated status strings (`REFUSED`, `SERVFAIL`, `OPEN`) to avoid false positives.
+- **Phase 1 Layout**: Re-introduced the Server `Group` column.
+- **Timestamped Reports**: Report filenames now include execution timestamps.
 
 ## [2.9.0] - 2026-03-13
-- **Advanced Infrastructure Checks**: Introduced root DNSSEC validation, EDNS0 payload / server-cookie checks, and Open Resolver (Amplification) vulnerability testing into Phase 1.
-- **Connectivity Dropping Metrics**: Upgraded the PING column. If `PING_COUNT >= 3`, any dropped packets will dynamically change the output cell to `WARN` and clearly display the `%` packet loss rate alongside latency.
+### Added
+- **Global Latency UI**: Display latency `(xxms)` for all Phase 1 checks.
+- **Advanced Infrastructure Checks**: Root DNSSEC, EDNS0, and Amplification testing.
+- **Connectivity Dropping Metrics**: Upgraded PING column with packet loss `%`.
 
 ## [2.8.2] - 2026-03-13
 ### Fixed

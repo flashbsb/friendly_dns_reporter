@@ -96,7 +96,15 @@ class Settings:
         
     @property
     def ping_loss_crit(self):
-        return self.get_int("CONNECTIVITY", "PING_LOSS_CRIT", 50)
+        return int(self.config.get('CONNECTIVITY', 'PING_LOSS_CRIT', fallback=50))
+
+    @property
+    def soa_latency_warn(self):
+        return int(self.config.get('CONNECTIVITY', 'SOA_LATENCY_WARN', fallback=500))
+
+    @property
+    def soa_latency_crit(self):
+        return int(self.config.get('CONNECTIVITY', 'SOA_LATENCY_CRIT', fallback=1500))
 
     @property
     def enable_trace(self):
@@ -139,6 +147,11 @@ class Settings:
     @property
     def enable_axfr_check(self):
         return self.get_bool("ZONE_TESTS", "ENABLE_AXFR_CHECK", True)
+
+    @property
+    def axfr_allowed_groups(self):
+        val = self.get_str("ZONE_TESTS", "AXFR_ALLOWED_GROUPS", "")
+        return [g.strip().upper() for g in val.split(',') if g.strip()]
 
     @property
     def enable_soa_serial_check(self):

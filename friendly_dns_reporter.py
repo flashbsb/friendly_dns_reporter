@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER - PYTHON EDITION
 =============================================================================
-Version: 2.9.2
+Version: 2.9.7
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -210,6 +210,7 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
         
     # Order results by group then by server IP
     sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', ''), x[0]))
+    ui.print_phase_header("1: Server Infrastructure")
     for srv, res in sorted_infra:
         ui.print_infra_detail(srv, res)
         
@@ -246,30 +247,84 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 continue
 
             soa = dns_engine.query(srv, domain, "SOA")
-            serial = soa['answers'][0].split(' ')[2] if soa['status'] == "NOERROR" and soa['answers'] else "?"
+            ans = soa['answers'][0].split(' ') if soa['status'] == "NOERROR" and soa['answers'] else []
+            
+            serial = ans[2] if len(ans) > 2 else "?"
+            mname = ans[0] if len(ans) > 0 else "N/A"
+            rname = ans[1] if len(ans) > 1 else "N/A"
+            
+            aa = soa.get('aa', False)
+            latency = soa.get('latency', 0)
+            
+            # NS Check
+            ns_q = dns_engine.query(srv, domain, "NS")
+            ns_list = sorted([a.lower().rstrip('.') for a in ns_q['answers']]) if ns_q['status'] == "NOERROR" else []
+            
             serials[srv] = serial
             axfr_ok, axfr_msg = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED")
             
-            res = {"domain": domain, "server": srv, "serial": serial, "axfr_vulnerable": axfr_ok, "axfr_detail": axfr_msg, "status": soa['status']}
+            res = {
+                "domain": domain, "server": srv, "group": infra.get('groups', 'UNCATEGORIZED'),
+                "serial": serial, "mname": mname, "rname": rname,
+                "axfr_vulnerable": axfr_ok, "axfr_detail": axfr_msg, "status": soa['status'],
+                "aa": aa, "latency": latency, "ns_list": ns_list,
+                "soa_latency_warn": settings.soa_latency_warn,
+                "soa_latency_crit": settings.soa_latency_crit,
+                "axfr_allowed_groups": settings.axfr_allowed_groups
+            }
             results.append(res)
-            with lock: ui.print_zone_detail(srv, domain, serial, axfr_ok, soa['status'])
+            # with lock: ui.print_zone_detail(srv, domain, res) # No longer printing immediate
             
         is_synced = len(set(s for s in serials.values() if s != "N/A")) <= 1
+        ns_lists = [r['ns_list'] for r in results if r['status'] == "NOERROR"]
+        ns_consistent = len(set(tuple(l) for l in ns_lists)) <= 1 if ns_lists else True
+        
         with lock:
+            # if not ns_consistent:
+            #    ui.print_warning(f"  [!] NS Inconsistency detected in zone: {domain}")
             zone_results.extend(results)
             counters['done'] += 1
             ui.print_progress(counters['done'], total, "Checking Zones")
 
     counters = {'done': 0}
     total = len(zones)
+    # ui.print_phase_header("2: Zone Integrity") # Header moved down after progress
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_check_zone, dom, srvs) for dom, srvs in zones.items()]
         concurrent.futures.wait(futures)
         
+    # Final sorted print
+    ui.print_phase_header("2: Zone Integrity")
+    last_domain = None
+    sorted_zones = sorted(zone_results, key=lambda x: (x['domain'], x['server']))
+    for res in sorted_zones:
+        # Check for NS inconsistency and Zone Sync per domain (printed once)
+        if res['domain'] != last_domain:
+            dom_results = [r for r in sorted_zones if r['domain'] == res['domain']]
+            dom_ns_lists = [r['ns_list'] for r in dom_results if r['status'] == "NOERROR"]
+            if dom_ns_lists and len(set(tuple(l) for l in dom_ns_lists)) > 1:
+                ui.print_warning(f"  [!] NS Inconsistency detected in zone: {res['domain']}")
+            
+            # Zone-wide sync check
+            dom_serials = [r['serial'] for r in dom_results if r['serial'] != "N/A" and r['serial'] != "?"]
+            zone_is_synced = len(set(dom_serials)) <= 1 if dom_serials else True
+            for r in dom_results: r['zone_is_synced'] = zone_is_synced
+            
+            last_domain = res['domain']
+            
+        ui.print_zone_detail(res['server'], res['domain'], res)
+        
     # Phase Summary
     vuln = sum(1 for r in zone_results if r['axfr_vulnerable'])
+    lame = sum(1 for r in zone_results if not r.get('aa', True) and r.get('status') == "NOERROR")
+    inconsistent_ns = sum(1 for r in zone_results if r.get('ns_list') and len(set(tuple(r2.get('ns_list', [])) for r2 in zone_results if r2['domain'] == r['domain'])) > 1)
+    
     phase_duration = time.time() - phase_start_time
-    ui.print_phase_footer("2: Zone Integrity", {"Total Zones": len(zones), "AXFR Vulnerabilities": vuln}, phase_duration)
+    ui.print_phase_footer("2: Zones", {
+        "Domains Tested": len(zones),
+        "Lame Delegations": lame,
+        "NS Inconsistencies": inconsistent_ns // 2 if inconsistent_ns > 0 else 0 # Rough estimate
+    }, phase_duration)
         
     return zone_results
 
@@ -320,11 +375,12 @@ def run_phase3_records(tasks, dns_engine, settings, infra_cache, results, lock):
         
         with lock:
             results.extend(local_res)
-            counters['done'] += 1
-            ui.print_progress(counters['done'], total, "Record Consistency")
+            # counters['done'] += 1
+            # ui.print_progress(counters['done'], total, "Record Consistency")
 
-    counters = {'done': 0}
-    total = len(tasks)
+    # counters = {'done': 0}
+    # total = len(tasks)
+    ui.print_phase_header("3: Record Consistency")
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_worker, *t) for t in tasks]
         concurrent.futures.wait(futures)
@@ -339,13 +395,13 @@ def main():
     script_start_time = time.time()
     settings = Settings()
     
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v2.9.2)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v2.9.7)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
     args = parser.parse_args()
     
-    ui.print_banner("v2.9.2")
+    ui.print_banner("v2.9.7")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
