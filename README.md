@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v2.8.2)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v2.9.2)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 

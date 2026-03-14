@@ -100,7 +100,7 @@ class DNSEngine:
             return False, 0
 
     def check_open_resolver(self, server):
-        """Check if server acts as an open resolver (Amplification risk). Returns (True/False/None, latency)."""
+        """Check if server acts as an open resolver. Returns (StatusString, latency)."""
         start = time.time()
         try:
             # Query a third-party domain without recursion desired
@@ -109,14 +109,25 @@ class DNSEngine:
             response = dns.query.udp(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000
             
-            # If it answers with an A record, it is resolving for us
+            # If it answers with an A record, it is open
             if response.answer and response.answer[0].rdtype == dns.rdatatype.A:
-                return True, latency
-            return False, latency
+                return "OPEN", latency
+            
+            # Map specific response codes
+            rcode = response.rcode()
+            if rcode == dns.rcode.REFUSED:
+                return "REFUSED", latency
+            elif rcode == dns.rcode.SERVFAIL:
+                return "SERVFAIL", latency
+            elif rcode == dns.rcode.NOERROR:
+                return "NOERROR", latency
+            else:
+                return dns.rcode.to_text(rcode), latency
+                
         except dns.exception.Timeout:
-            return None, self.timeout * 1000
+            return "TIMEOUT", self.timeout * 1000
         except:
-            return False, 0
+            return "ERROR", 0
 
     def check_edns0(self, server):
         """Check if server supports EDNS0 and large UDP payloads. Returns (True/False/None, latency)."""

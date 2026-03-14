@@ -83,6 +83,22 @@ class Settings:
         return self.get_int("CONNECTIVITY", "PING_COUNT", 3)
 
     @property
+    def ping_latency_warn(self):
+        return self.get_int("CONNECTIVITY", "PING_LATENCY_WARN", 100)
+
+    @property
+    def ping_latency_crit(self):
+        return self.get_int("CONNECTIVITY", "PING_LATENCY_CRIT", 250)
+        
+    @property
+    def ping_loss_warn(self):
+        return self.get_int("CONNECTIVITY", "PING_LOSS_WARN", 15)
+        
+    @property
+    def ping_loss_crit(self):
+        return self.get_int("CONNECTIVITY", "PING_LOSS_CRIT", 50)
+
+    @property
     def enable_trace(self):
         return self.get_bool("CONNECTIVITY", "ENABLE_TRACE", False)
 

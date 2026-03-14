@@ -1,5 +1,5 @@
+urllib3
 dnspython
 requests
-jinja2
+Jinja2
 icmplib
-pandas

@@ -8,6 +8,7 @@ OK     = "\033[92m"  # Green
 FAIL   = "\033[91m"  # Red
 WARN   = "\033[93m"  # Yellow
 INFO   = "\033[96m"  # Cyan
+CRIT   = "\033[95m"  # Magenta
 BOLD   = "\033[1m"
 
 def print_banner(version=""):
@@ -22,7 +23,7 @@ def print_header(threads, consistency, target):
 def print_phase(name):
     print(f"\n{BOLD}{INFO}>>> PHASE {name}{RESET}")
     if "1" in name:
-        print(f"  {'IP Address':15} | {'PING':11} | {'53 UDP':11} | {'53 TCP':11} | {'DNSSEC':11} | {'EDNS0':11} | {'DoT (853)':11} | {'DoH (443)':11} | {'OpenRes':9} | Status")
+        print(f"  {'IP Address':15} | {'Group':11} | {'PING (R/S % ms)':16} | {'53 UDP':11} | {'53 TCP':11} | {'DNSSEC':11} | {'EDNS0':11} | {'DoT (853)':11} | {'DoH (443)':11} | {'OpenRes':9} | Status")
     elif "2" in name:
         print(f"  {'Domain':25} -> {'Server':15} | {'Serial':10} | AXFR Status")
     elif "3" in name:
@@ -52,9 +53,37 @@ def print_interrupt():
     print("!" * 80 + "\n")
 
 def print_infra_detail(srv, data):
-    ping_clr = OK if data['ping'] == "OK" else FAIL
-    ping_str = f"OK ({data['latency']:.0f}ms)" if data['ping'] == "OK" else "FAIL"
+    ping_loss = data.get('packet_loss', 0.0)
+    ping_count = data.get('ping_count', 0)
     
+    lat_warn = data.get('ping_latency_warn', 100)
+    lat_crit = data.get('ping_latency_crit', 250)
+    loss_warn = data.get('ping_loss_warn', 15)
+    loss_crit = data.get('ping_loss_crit', 50)
+    
+    if data['ping'] == "OK":
+        loss_pct = int(ping_loss * 100)
+        lat = data['latency']
+        
+        # Color Logic
+        if loss_pct >= loss_crit or lat >= lat_crit:
+            ping_clr = CRIT
+        elif loss_pct >= loss_warn or lat >= lat_warn:
+            ping_clr = WARN
+        else:
+            ping_clr = OK
+            
+        # String Formatting
+        if ping_count >= 3:
+            lost_pkts = int(ping_count * ping_loss)
+            recv_pkts = ping_count - lost_pkts
+            ping_str = f"{recv_pkts}/{ping_count} {loss_pct}% {lat:.0f}ms"
+        else:
+            ping_str = f"OK ({lat:.0f}ms)"
+    else:
+        ping_clr = FAIL
+        ping_str = "FAIL"
+        
     p53t_clr = OK if data['port53'] == "OPEN" else FAIL
     p53t_str = f"OK ({data['port53_lat']:.0f}ms)" if data['port53'] == "OPEN" else "FAIL"
     
@@ -76,12 +105,23 @@ def print_infra_detail(srv, data):
     dsec_str = f"OK ({data.get('dnssec_lat', 0):.0f}ms)" if data.get('dnssec') == "OK" else data.get('dnssec', '--')
     
     openres = data.get('open_resolver', 'SAFE')
-    openres_clr = FAIL if openres == "VULN" else OK
-    openres_str = f"VULN ({data.get('open_resolver_lat', 0):.0f}ms)" if openres == "VULN" else openres
+    
+    if openres == "OPEN":
+        openres_clr = FAIL
+    elif openres == "TIMEOUT":
+        openres_clr = WARN
+    else:
+        openres_clr = OK
+        
+    openres_str = f"{openres} ({data.get('open_resolver_lat', 0):.0f}ms)" if openres in ["OPEN", "REFUSED", "SERVFAIL", "NOERROR"] else openres
     
     alive_str = f"{OK}ALIVE{RESET}" if not data['is_dead'] else f"{FAIL}DEAD{RESET}"
     
-    print(f"  {srv:15} | {ping_clr}{ping_str:11}{RESET} | {p53u_clr}{p53u_str:11}{RESET} | {p53t_clr}{p53t_str:11}{RESET} | {dsec_clr}{dsec_str:11}{RESET} | {edns_clr}{edns_str:11}{RESET} | {dot_clr}{dot_str:11}{RESET} | {doh_clr}{doh_str:11}{RESET} | {openres_clr}{openres_str:9}{RESET} | {alive_str}")
+    group_str = data.get('groups', '')
+    if len(group_str) > 11:
+        group_str = group_str[:8] + "..."
+        
+    print(f"  {srv:15} | {INFO}{group_str:11}{RESET} | {ping_clr}{ping_str:16}{RESET} | {p53u_clr}{p53u_str:11}{RESET} | {p53t_clr}{p53t_str:11}{RESET} | {dsec_clr}{dsec_str:11}{RESET} | {edns_clr}{edns_str:11}{RESET} | {dot_clr}{dot_str:11}{RESET} | {doh_clr}{doh_str:11}{RESET} | {openres_clr}{openres_str:9}{RESET} | {alive_str}")
 
 def print_zone_detail(srv, domain, serial, axfr_ok, status):
     sync_clr = OK if serial != "?" and status == "NOERROR" else (WARN if status == "UNREACHABLE" else FAIL)
@@ -107,3 +147,11 @@ def format_result(group, target, server, rtype, status, latency, is_consistent):
         
     consistency_str = f" [{WARN}DIV!{RESET}]" if not is_consistent else ""
     return f"  [{INFO}REC{RESET}] {group:10} | {target:25} -> {server:15} | {rtype:5} | {status_clr}{status:12}{RESET} | {latency:4.1f}ms{consistency_str}"
+
+def print_progress(current, total, prefix="", length=30):
+    """Prints a carriage-return progress bar."""
+    percent = (current / total) * 100
+    filled = int(length * current // total)
+    bar = "█" * filled + "-" * (length - filled)
+    print(f"\r  {INFO}{prefix}{RESET} |{bar}| {percent:3.0f}% ({current}/{total})", end="", flush=True)
+    if current == total: print() # New line when done

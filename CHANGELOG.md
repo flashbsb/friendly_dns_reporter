@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.2] - 2026-03-13
+### Added
+- **Real-time Progress Indicators**: Integrated a dynamic status bar that tracks the completion percentage of parallel threads across all three diagnostic phases, preventing the UI from appearing frozen during long scans.
+- **Group-based Sorting**: Phase 1 infrastructure results are now automatically sorted alphabetically by Group name (and then by IP), providing a much cleaner and more organized terminal overview.
+
+## [2.9.1] - 2026-03-13
+### Optimized
+- **OpenResolver Clarity**: Changed the `OpenRes` column output from obscure boolean flags (`SAFE`/`VULN`) to explicit DNS engine transaction states (`REFUSED`, `SERVFAIL`, `TIMEOUT`, `OPEN`) to avoid false positives on internal recursive servers.
+- **Phase 1 Layout**: Re-introduced the Server `Group` tracking column back into the Phase 1 terminal output table without sacrificing density.
+- **Timestamped Reports**: Automated report files (`.html`, `.csv`, `.json`) now dynamically append the exact execution timestamp (`YYYYMMDD_HHMM`) to prevent overwriting previous audit logs.
+
+## [2.9.0] - 2026-03-13
+- **Advanced Infrastructure Checks**: Introduced root DNSSEC validation, EDNS0 payload / server-cookie checks, and Open Resolver (Amplification) vulnerability testing into Phase 1.
+- **Connectivity Dropping Metrics**: Upgraded the PING column. If `PING_COUNT >= 3`, any dropped packets will dynamically change the output cell to `WARN` and clearly display the `%` packet loss rate alongside latency.
+
 ## [2.8.2] - 2026-03-13
 ### Fixed
 - **NSID Attribute Support**: Implemented robust attribute access for extracting the NSID in dnspython (checking for both `.nsid` and `.data`), resolving a script-breaking crash `AttributeError: 'NSIDOption' object has no attribute 'data'` on newer dnspython versions.

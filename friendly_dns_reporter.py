@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER - PYTHON EDITION
 =============================================================================
-Version: 2.8.2
+Version: 2.9.2
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -130,6 +130,12 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
         ping_res = conn.ping(srv, count=settings.ping_count) if settings.enable_ping else {"is_alive": True}
         res["ping"] = "OK" if ping_res.get("is_alive") else "FAIL"
         res["latency"] = ping_res.get("avg_rtt", 0)
+        res["packet_loss"] = ping_res.get("packet_loss", 0.0) # icmplib returns decimal (e.g., 0.33 for 33%)
+        res["ping_count"] = settings.ping_count 
+        res["ping_latency_warn"] = settings.ping_latency_warn
+        res["ping_latency_crit"] = settings.ping_latency_crit
+        res["ping_loss_warn"] = settings.ping_loss_warn
+        res["ping_loss_crit"] = settings.ping_loss_crit
         
         # Ports (TCP)
         p53_tcp, p53_lat = conn.check_port(srv, 53)
@@ -185,18 +191,27 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
             res["edns0"] = "OK" if edns0 is True else ("FAIL" if edns0 is False else "TIMEOUT")
             res["edns0_lat"] = edns_lat
             
-            open_res, open_lat = dns_engine.check_open_resolver(srv) if settings.enable_recursion_check else (False, 0)
-            res["open_resolver"] = "VULN" if open_res is True else ("SAFE" if open_res is False else "TIMEOUT")
-            res["open_resolver_lat"] = open_lat
+            opn_st, opn_lat = dns_engine.check_open_resolver(srv) if settings.enable_recursion_check else ("DISABLED", 0)
+            res["open_resolver"] = opn_st
+            res["open_resolver_lat"] = opn_lat
         
         res["trace"] = conn.traceroute(srv, max_hops=settings.trace_max_hops) if settings.enable_trace else None
         
         with lock:
             infra_results[srv] = res
-            ui.print_infra_detail(srv, res)
+            # ui.print_infra_detail(srv, res) # No longer printing-as-we-go
+            counters['done'] += 1
+            ui.print_progress(counters['done'], total, "Scanning Servers")
 
+    counters = {'done': 0}
+    total = len(servers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         list(executor.map(_check_server, servers))
+        
+    # Order results by group then by server IP
+    sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', ''), x[0]))
+    for srv, res in sorted_infra:
+        ui.print_infra_detail(srv, res)
         
     # Phase Summary
     alive = sum(1 for r in infra_results.values() if not r['is_dead'])
@@ -242,7 +257,11 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         is_synced = len(set(s for s in serials.values() if s != "N/A")) <= 1
         with lock:
             zone_results.extend(results)
+            counters['done'] += 1
+            ui.print_progress(counters['done'], total, "Checking Zones")
 
+    counters = {'done': 0}
+    total = len(zones)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_check_zone, dom, srvs) for dom, srvs in zones.items()]
         concurrent.futures.wait(futures)
@@ -301,7 +320,11 @@ def run_phase3_records(tasks, dns_engine, settings, infra_cache, results, lock):
         
         with lock:
             results.extend(local_res)
+            counters['done'] += 1
+            ui.print_progress(counters['done'], total, "Record Consistency")
 
+    counters = {'done': 0}
+    total = len(tasks)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_worker, *t) for t in tasks]
         concurrent.futures.wait(futures)
@@ -316,13 +339,13 @@ def main():
     script_start_time = time.time()
     settings = Settings()
     
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v2.8.2)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v2.9.2)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
     args = parser.parse_args()
     
-    ui.print_banner("v2.8.2")
+    ui.print_banner("v2.9.2")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
@@ -387,10 +410,12 @@ def main():
     reporter = Reporter(args.output)
     report_data = {"summary": {"total": len(results), "timestamp": datetime.now().isoformat()}, "infrastructure": infra_cache, "zones": zone_results, "results": results}
     
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    
     paths = {}
-    if settings.enable_json_report: paths["JSON"] = reporter.export_json(report_data, "report.json")
-    if settings.enable_csv_report: paths["CSV"] = reporter.export_csv(results, "report.csv", list(results[0].keys()) if results else [])
-    if settings.enable_html_report: paths["HTML"] = reporter.generate_html(report_data, "dashboard.html")
+    if settings.enable_json_report: paths["JSON"] = reporter.export_json(report_data, f"report_{timestamp}.json")
+    if settings.enable_csv_report: paths["CSV"] = reporter.export_csv(results, f"report_{timestamp}.csv", list(results[0].keys()) if results else [])
+    if settings.enable_html_report: paths["HTML"] = reporter.generate_html(report_data, f"dashboard_{timestamp}.html")
     
     total, success = len(results), sum(1 for r in results if r['status'] == "NOERROR")
     div = sum(1 for r in results if r['internally_consistent'] == "DIV!")

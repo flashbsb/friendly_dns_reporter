@@ -110,7 +110,7 @@
                 <p>Automated Diagnostics | Generated: {{ summary.timestamp }}</p>
             </div>
             <div style="text-align: right">
-                <div class="badge bg-info">Python Suite v2.8.2</div>
+                <div class="badge bg-info">Python Suite v2.9.2</div>
             </div>
         </div>
 
@@ -126,7 +126,17 @@
                     </span>
                 </div>
                 <table class="stats-table">
-                    <tr><td class="label">Ping Avg</td><td><span class="{{ 'val-ok' if data.ping == 'OK' else 'val-err' }}">{{ data.ping }}</span> ({{ data.latency|round(0) }}ms)</td></tr>
+                    <tr>
+                        <td class="label">Ping Avg</td>
+                        <td>
+                            <span class="{{ 'val-ok' if data.ping == 'OK' else 'val-err' }}">{{ data.ping }}</span> ({{ data.latency|round(0) }}ms)
+                            {% if data.ping_count and data.ping_count >= 3 and data.ping == 'OK' %}
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                                {{ (data.ping_count - (data.ping_count * data.packet_loss))|int }}/{{ data.ping_count }} recv ({{ (data.packet_loss * 100)|int }}% loss)
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
                     <tr><td class="label">Port 53 (TCP)</td><td><span class="{{ 'val-ok' if data.port53 == 'OPEN' else 'val-err' }}">{{ data.port53 }}</span> ({{ data.port53_lat|round(0) }}ms)</td></tr>
                     <tr><td class="label">Port 443 (TCP)</td><td><span class="{{ 'val-ok' if data.port443 == 'OPEN' else 'val-err' }}">{{ data.port443 }}</span> ({{ data.port443_lat|round(0) }}ms)</td></tr>
                     <tr><td class="label">Recursion (UDP)</td><td><span class="{{ 'val-ok' if data.recursion == 'OPEN' else ('val-err' if data.recursion == 'UNREACHABLE' else ('val-warn' if data.recursion == 'TIMEOUT' else 'val-err')) }}">{{ data.recursion }}</span> ({{ data.recursion_lat|round(0) }}ms)</td></tr>
