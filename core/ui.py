@@ -309,7 +309,7 @@ def print_legend_phase2():
     print(f"  - {BOLD}DNSSEC{RESET}      : Zone signing status ({OK}SIGNED{RESET} or {WARN}UNSIGNED{RESET}).")
     print(f"  - {BOLD}TIMERS{RESET}      : SOA Timer compliance ({OK}RFC-OK{RESET} or {FAIL}NON-COMPLIANT{RESET} with RFC 1912).")
     print(f"  - {BOLD}MNAME{RESET}       : Primary Master Server reachability ({OK}UP{RESET}, {FAIL}DOWN{RESET}, or {WARN}UNKNOWN{RESET}).")
-    print(f"  - {BOLD}WEB-RISK{RESET}    : Reputation/Malware exposure check ({OK}SAFE{RESET} or {FAIL}EXPOSED!{RESET}).")
+    print(f"  - {BOLD}WEB-RISK{RESET}    : Checks if HTTP/HTTPS ports (80/443) are exposed on the DNS server ({OK}SAFE{RESET} or {FAIL}EXPOSED!{RESET}).")
     print("-" * 115)
 
 def print_legend_phase3():

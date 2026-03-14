@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v5.2.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v5.2.1)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -15,6 +15,7 @@ This tool has been completely rewritten in Python to ensure native compatibility
 
 ## 🚀 Features (Buzzwords)
 
+*   **Forensic Execution Logging (v5.2.1)**: Detailed recording of every diagnostic event (probes, queries, findings) for forensic analysis. Conditional via `.ini`.
 *   **Interactive Terminal Legends (v5.2.0)**: Automatic legends after each diagnostic phase explaining columns, colors, and statuses. Toggled via `.ini`.
 *   **UI Transparency & Colorization (v5.1.0)**: Phase 2 reports exact DNS error codes (e.g., TIMEOUT). Phase 3 sync statuses are fully colorized.
 *   **Deep Service Validation (v5.0.0)**: Differentiates between Port status (socket) and Service status (real DNS response) for UDP, TCP, DoT, and DoH.
@@ -30,7 +31,8 @@ This tool has been completely rewritten in Python to ensure native compatibility
 ```mermaid
 graph TD
     Start((Start)) --> LoadConfig[Load settings.ini & Data]
-    LoadConfig --> SmartLoad[Smart CSV Loader: Delimiter & Type Detection]
+    LoadConfig --> Logging[Initialize forensic Logging: Optional]
+    Logging --> SmartLoad[Smart CSV Loader: Delimiter & Type Detection]
     SmartLoad --> PhaseSelect{Phase Selection?}
     
     PhaseSelect -- Selective --> Phase1

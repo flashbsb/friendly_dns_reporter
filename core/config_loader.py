@@ -63,6 +63,10 @@ class Settings:
     def enable_report_timestamps(self):
         return self.get_bool("REPORTS", "ENABLE_REPORT_TIMESTAMPS", True)
 
+    @property
+    def enable_execution_log(self):
+        return self.get_bool("REPORTS", "ENABLE_EXECUTION_LOG", True)
+
     # --- DNS ENGINE ---
     @property
     def dns_timeout(self):
@@ -112,15 +116,15 @@ class Settings:
         
     @property
     def ping_loss_crit(self):
-        return int(self.config.get('CONNECTIVITY', 'PING_LOSS_CRIT', fallback=50))
+        return self.get_int("CONNECTIVITY", "PING_LOSS_CRIT", 50)
 
     @property
     def soa_latency_warn(self):
-        return int(self.config.get('CONNECTIVITY', 'SOA_LATENCY_WARN', fallback=500))
+        return self.get_int("CONNECTIVITY", "SOA_LATENCY_WARN", 500)
 
     @property
     def soa_latency_crit(self):
-        return int(self.config.get('CONNECTIVITY', 'SOA_LATENCY_CRIT', fallback=1500))
+        return self.get_int("CONNECTIVITY", "SOA_LATENCY_CRIT", 1500)
 
 
     # --- ADVANCED CHECKS ---

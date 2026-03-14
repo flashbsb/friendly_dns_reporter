@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER
 =============================================================================
-Version: 5.2.0
+Version: 5.2.1
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -66,7 +66,14 @@ import core.ui as ui
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Setup Logging
-def setup_logging(log_dir, use_timestamp=True):
+def setup_logging(settings):
+    if not settings.enable_execution_log:
+        # If disabled, we still return a dummy string but don't configure logging
+        return None
+
+    log_dir = settings.log_dir
+    use_timestamp = settings.enable_report_timestamps
+
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     
@@ -80,12 +87,17 @@ def setup_logging(log_dir, use_timestamp=True):
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler(sys.stdout) # Keep terminal output
+            logging.FileHandler(log_file, encoding='utf-8')
+            # StreamHandler(sys.stdout) removed to avoid double output with standard print()
         ]
     )
     # Silence third-party logs
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+    
+    logging.info("=============================================================================")
+    logging.info(f"FRIENDLY DNS REPORTER STARTED - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logging.info("=============================================================================")
+    
     return log_file
 
 def load_datasets(domains_path, groups_path):
@@ -213,18 +225,22 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
         
         if not is_alive:
             res["is_dead"] = True
+            logging.info(f"[PHASE 1] SERVER {srv} IS DEAD (Ping Fail and Services Down)")
             for field in ["version", "recursion", "dot", "doh", "dnssec", "edns0", "open_resolver"]:
                  res[field] = "UNREACHABLE"
             res["port53t_serv"] = "FAIL"
             res["port853_serv"] = "FAIL"
             res["port443_serv"] = "FAIL"
         else:
+            logging.info(f"[PHASE 1] Server {srv} is ALIVE. Latency: {res['latency']:.1f}ms, Loss: {res['packet_loss']}%")
             # Protocols (DoT/DoH)
             p853_open, p853_slat = conn.check_port(srv, 853)
+            logging.info(f"[PHASE 1] Server {srv}: Port 853 is {'OPEN' if p853_open else 'CLOSED'}")
             res["port853"] = "OPEN" if p853_open else "CLOSED"
             res["port853_serv"] = "FAIL"
             if p853_open:
                 dot_st, dot_lat = dns_engine.check_dot(srv) if settings.enable_dot_check else ("DISABLED", 0)
+                logging.info(f"[PHASE 1] Server {srv}: DoH Check result: {dot_st} ({dot_lat:.1f}ms)")
                 res["dot"] = dot_st
                 res["dot_lat"] = dot_lat
                 res["port853_serv"] = dot_st
@@ -233,10 +249,12 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
                 res["dot_lat"] = 0
 
             p443_open, p443_slat = conn.check_port(srv, 443)
+            logging.info(f"[PHASE 1] Server {srv}: Port 443 is {'OPEN' if p443_open else 'CLOSED'}")
             res["port443"] = "OPEN" if p443_open else "CLOSED"
             res["port443_serv"] = "FAIL"
             if p443_open:
                 doh_st, doh_lat = dns_engine.check_doh(srv) if settings.enable_doh_check else ("DISABLED", 0)
+                logging.info(f"[PHASE 1] Server {srv}: DoH Check result: {doh_st} ({doh_lat:.1f}ms)")
                 res["doh"] = doh_st
                 res["doh_lat"] = doh_lat
                 res["port443_serv"] = doh_st
@@ -246,14 +264,17 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
             
             # Advanced Infrastructure Checks
             dnssec, dsec_lat = dns_engine.check_dnssec(srv) if settings.enable_dnssec_check else (False, 0)
+            logging.info(f"[PHASE 1] Server {srv}: DNSSEC support: {dnssec} ({dsec_lat:.1f}ms)")
             res["dnssec"] = "OK" if dnssec is True else ("FAIL" if dnssec is False else "TIMEOUT")
             res["dnssec_lat"] = dsec_lat
             
             edns0, edns_lat = dns_engine.check_edns0(srv) if settings.enable_edns_check else (False, 0)
+            logging.info(f"[PHASE 1] Server {srv}: EDNS0 support: {edns0} ({edns_lat:.1f}ms)")
             res["edns0"] = "OK" if edns0 is True else ("FAIL" if edns0 is False else "TIMEOUT")
             res["edns0_lat"] = edns_lat
             
             opn_st, opn_lat = dns_engine.check_open_resolver(srv) if settings.enable_recursion_check else ("DISABLED", 0)
+            logging.info(f"[PHASE 1] Server {srv}: Open Resolver: {opn_st} ({opn_lat:.1f}ms)")
             res["open_resolver"] = opn_st
             res["open_resolver_lat"] = opn_lat
         
@@ -338,8 +359,16 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 
                 # Robust extraction: check answers + authority
                 records = soa['answers'] + soa.get('authority', [])
-                soa_rec = next((r for r in records if " SOA " in f" {r} " or len(r.split()) >= 7), None)
-                if not soa_rec and records: soa_rec = records[0] # Fallback
+                # Look specifically for the SOA record line
+                soa_rec = None
+                for r in records:
+                    p = r.split()
+                    if "SOA" in p:
+                        soa_rec = r
+                        break
+                if not soa_rec and records:
+                    # Fallback for some non-standard string representations
+                    soa_rec = next((r for r in records if len(r.split()) >= 7), records[0])
                 
                 parts = soa_rec.split() if soa_rec else []
                 serial = "?"
@@ -397,6 +426,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 if mname != "N/A": mname_target = mname
                 
                 axfr_ok, axfr_msg = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED")
+                logging.info(f"[PHASE 2] Zone {domain} on {srv}: SOA Serial: {serial}, AXFR: {axfr_ok} ({axfr_msg})")
                 
                 res = {
                     "domain": domain, "server": srv, "group": group_name,
@@ -412,6 +442,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 }
                 local_results.append(res)
             except Exception as e:
+                logging.error(f"[PHASE 2] Error checking zone {domain} on {srv}: {e}")
                 # Critical: Include group in error result so UI doesn't show UNCATEGORIZED
                 local_results.append({
                     "domain": domain, "server": srv, "group": group_name,
@@ -555,6 +586,10 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                 # SEMANTIC AUDIT
                 findings = []
                 
+                # 0. Protocol Flags (TC - Truncated)
+                if main_q.get('tc'):
+                    findings.append("Truncated response (TC bit set) - Suggests Large Packets/MTU issues")
+                
                 # 1. TTL Analysis
                 ttl_ok, ttl_msg = validators.analyze_ttl(main_q.get('ttl', 0))
                 if not ttl_ok: findings.append(ttl_msg)
@@ -596,6 +631,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                     "is_consistent": is_consistent,
                     "findings": findings
                 }
+                logging.info(f"[PHASE 3] Query: {target} {rtype} @ {server} -> {entry['status']} ({entry['latency']:.1f}ms). Findings: {len(findings)}")
                 local_res.append(entry)
             
             with lock:
@@ -603,6 +639,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                 counters['done'] += 1
                 ui.print_progress(counters['done'], total, "Record Consistency")
         except Exception as e:
+            logging.error(f"[PHASE 3] Execution error for {target} @ {server}: {e}")
             with lock:
                 # Add a partial/error result instead of nothing
                 results.append({"domain": target, "group": group_name, "server": server, "type": "ERROR", "status": str(e), "latency": 0, "is_consistent": False})
@@ -655,9 +692,13 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
 def main():
     script_start_time = time.time()
     settings = Settings()
-    log_file = setup_logging(settings.log_dir, use_timestamp=settings.enable_report_timestamps)
+    log_file = setup_logging(settings)
     
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.2.0)")
+    if settings.enable_execution_log:
+        logging.info(f"Configuration loaded from {settings.path}")
+        logging.info(f"Max Threads: {settings.max_threads}, Consistency Checks: {settings.consistency_checks}")
+
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.2.1)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -675,13 +716,18 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v5.2.0")
+    ui.print_banner("v5.2.1")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
     if not domains_raw or not dns_groups:
-        print(f"[{ui.FAIL}ERROR{ui.RESET}] Datasets missing/empty.")
+        err_msg = "Datasets missing or empty. Execution aborted."
+        print(f"[{ui.FAIL}ERROR{ui.RESET}] {err_msg}")
+        if settings.enable_execution_log: logging.error(err_msg)
         sys.exit(1)
+
+    if settings.enable_execution_log:
+        logging.info(f"Datasets loaded: {len(domains_raw)} domains, {len(dns_groups)} groups defined.")
 
     dns_engine = DNSEngine(timeout=settings.dns_timeout, tries=settings.dns_retries)
     conn = Connectivity(timeout=settings.timeout)
@@ -750,11 +796,21 @@ def main():
     
     # Filter out empty paths (fixes request to not show 'Reports Generated' header if none created)
     paths = {k: v for k, v in paths.items() if v}
+    if settings.enable_execution_log:
+        for label, path in paths.items():
+            logging.info(f"Report Generated [{label}]: {path}")
     
     total, success = len(results), sum(1 for r in results if r['status'] == "NOERROR")
     div = sum(1 for r in results if r['internally_consistent'] == "DIV!")
     sync_issues = sum(1 for z in zone_results if z['serial'] == "?" or z['status'] == "UNREACHABLE")
     script_duration = time.time() - script_start_time
+    
+    if settings.enable_execution_log:
+        logging.info(f"FINAL SUMMARY: Total={total}, Success={success}, Divergences={div}, ZoneIssues={sync_issues}, Duration={script_duration:.2f}s")
+        logging.info("=============================================================================")
+        logging.info("FRIENDLY DNS REPORTER FINISHED")
+        logging.info("=============================================================================")
+
     ui.print_summary_table(total, success, total-success, div, sync_issues, paths, script_duration)
 
 if __name__ == "__main__":

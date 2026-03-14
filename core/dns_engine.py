@@ -76,6 +76,7 @@ class DNSEngine:
                     "latency": latency,
                     "flags": dns.flags.to_text(response.flags).split(),
                     "aa": bool(response.flags & dns.flags.AA),
+                    "tc": bool(response.flags & dns.flags.TC), # Truncated
                     "answers": sorted(answers),
                     "authority": sorted(authority),
                     "nsid": nsid,
@@ -284,13 +285,19 @@ class DNSEngine:
     def resolve_chain(self, server, target, rtype):
         """Verify if a CNAME or MX target actually resolves to an IP (Dangling DNS check)."""
         try:
-            # Simple check: see if the target resolves to an A record
-            res = self.query(server, target, "A")
-            if res['status'] == "NOERROR" and res['answers']:
+            # Check for both IPv4 and IPv6 resolution
+            has_ip = False
+            for family in ["A", "AAAA"]:
+                res = self.query(server, target, family)
+                if res['status'] == "NOERROR" and res['answers']:
+                    has_ip = True
+                    break
+                if res['status'] == "NXDOMAIN":
+                    return False, "NXDOMAIN (Dangling!)"
+            
+            if has_ip:
                 return True, "RESOLVES"
-            if res['status'] == "NXDOMAIN":
-                return False, "NXDOMAIN (Dangling!)"
-            return False, f"STATUS: {res['status']}"
+            return False, "NO ADDRESS RECORDS FOUND"
         except:
             return False, "ERROR"
 

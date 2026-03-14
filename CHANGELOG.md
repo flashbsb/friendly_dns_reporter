@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.1] - 2026-03-14
+### Added
+- **Forensic Execution Logging**: Introduced a high-detail logging system that records every diagnostic action (probes, queries, findings) for technical forensic analysis.
+- **Conditional Logging Trigger**: Added `ENABLE_EXECUTION_LOG` in `settings.ini` to toggle detailed execution logging (Default: `true`).
+- **IPv6 Chain Resolution**: Updated the "Dangling DNS" check in the diagnostic engine to support both IPv4 (`A`) and IPv6 (`AAAA`) record verification.
+- **Truncated Response Detection**: Added terminal and log warnings for DNS responses with the `TC` (Truncated) bit set, identifying potential MTU/Packet size issues.
+
+### Fixed
+- **Empty Log File Issue**: Resolved the bug where an empty log file was created even when no logging occurred.
+- **SOA Search Robustness**: Hardened the SOA record extraction logic to handle varied authoritative response formats.
+- **Config Type Consistency**: Standardized the `Settings` class to use type-safe helper methods for all `.ini` parameters.
+- **Web-Risk Description**: Clarified the Phase 2 legend to accurately describe the "Web-Risk" check as a port exposure scan.
+
 ## [5.2.0] - 2026-03-14
 ### Added
 - **UI Legends integration**: Added descriptive legends after Phase 1 (Infrastructure), Phase 2 (Zones), and Phase 3 (Records) to clarify column meanings, values, and color coding.
