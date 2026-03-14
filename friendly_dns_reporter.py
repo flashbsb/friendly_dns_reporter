@@ -3,9 +3,9 @@
 
 """
 =============================================================================
-FRIENDLY DNS REPORTER - PYTHON EDITION
+FRIENDLY DNS REPORTER
 =============================================================================
-Version: 5.1.0
+Version: 5.2.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -280,8 +280,11 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
     alive = sum(1 for r in infra_results.values() if not r['is_dead'])
     dead = len(infra_results) - alive
     phase_duration = time.time() - phase_start_time
+    if settings.enable_ui_legends:
+        ui.print_legend_phase1()
+
     ui.print_phase_footer("1: Infrastructure", {"Total Servers": len(infra_results), "Status Alive": alive, "Status Dead": dead}, phase_duration)
-    
+
     return infra_results
 
 def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock):
@@ -497,12 +500,15 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     inconsistent_ns = sum(1 for r in zone_results if r.get('ns_list') and len(set(tuple(r2.get('ns_list', [])) for r2 in zone_results if r2['domain'] == r['domain'])) > 1)
     
     phase_duration = time.time() - phase_start_time
+    if settings.enable_ui_legends:
+        ui.print_legend_phase2()
+
     ui.print_phase_footer("2: Zones", {
         "Domains Tested": len(zones),
         "Lame Delegations": lame,
         "NS Inconsistencies": inconsistent_ns // 2 if inconsistent_ns > 0 else 0 # Rough estimate
     }, phase_duration)
-        
+
     return zone_results
 
 def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock):
@@ -641,6 +647,9 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     succ = sum(1 for r in results if r['status'] == "NOERROR")
     fail = len(results) - succ
     phase_duration = time.time() - phase_start_time
+    if settings.enable_ui_legends:
+        ui.print_legend_phase3()
+
     ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration)
 
 def main():
@@ -648,7 +657,7 @@ def main():
     settings = Settings()
     log_file = setup_logging(settings.log_dir, use_timestamp=settings.enable_report_timestamps)
     
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.1.0)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v5.2.0)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -666,7 +675,7 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v5.1.0")
+    ui.print_banner("v5.2.0")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)

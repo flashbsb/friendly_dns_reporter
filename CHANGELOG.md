@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.2.0] - 2026-03-14
+### Added
+- **UI Legends integration**: Added descriptive legends after Phase 1 (Infrastructure), Phase 2 (Zones), and Phase 3 (Records) to clarify column meanings, values, and color coding.
+- **Legend Configuration Toggle**: Introduced `ENABLE_UI_LEGENDS` in `settings.ini` and `Settings` class to allow users to toggle the visibility of terminal legends (Default: `true`).
+- **Branding Simplification**: Removed "PYTHON EDITION" from terminal banners and documentation for a cleaner user experience.
+
+### Changed
+- **Version Milestone**: Incremented version to 5.2.0 reflecting the addition of interactive terminal documentation features.
+
 ## [5.1.0] - 2026-03-14
 ### Added
 - **Colorized Sync Status**: The Phase 3 'Sync' column now displays `OK` in green for immediate visual confirmation of synchronized records.

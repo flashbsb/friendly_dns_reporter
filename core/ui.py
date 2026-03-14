@@ -13,7 +13,7 @@ BOLD   = "\033[1m"
 
 def print_banner(version=""):
     print("\n" + "=" * 80)
-    print(f"{BOLD}FRIENDLY DNS REPORTER - PYTHON EDITION {version}{RESET}")
+    print(f"{BOLD}FRIENDLY DNS REPORTER {version}{RESET}")
     print("=" * 80)
 
 def print_header(threads, consistency, target):
@@ -269,3 +269,60 @@ def print_progress(current, total, prefix="", length=30):
     bar = "█" * filled + "-" * (length - filled)
     print(f"\r  {INFO}{prefix}{RESET} |{bar}| {percent:3.0f}% ({current}/{total})", end="", flush=True)
     if current == total: print() # New line when done
+
+def print_legend_phase1():
+    """Legend for Phase 1: Infrastructure."""
+    print(f"\n  {BOLD}PHASE 1 LEGEND (Infrastructure):{RESET}")
+    print(f"  {INFO}COLUMNS:{RESET}")
+    print(f"  - {BOLD}GROUP{RESET}      : Server profile/category (CORE, GOOGLE, etc.).")
+    print(f"  - {BOLD}IP ADDRESS{RESET} : Network address of the DNS server.")
+    print(f"  - {BOLD}PING (R/S){RESET} : Packets Received/Sent and Packet Loss (%).")
+    print(f"  - {BOLD}53 UDP/TCP{RESET} : Availability of DNS service on standard port 53.")
+    print(f"  - {BOLD}DNSSEC/EDNS{RESET}: Support for security extensions and large payloads.")
+    print(f"  - {BOLD}DoT/DoH{RESET}    : DNS-over-TLS (853) and DNS-over-HTTPS (443) support.")
+    print(f"  - {BOLD}OpenRes{RESET}    : Open Resolver detection (Recursion safety).")
+    print(f"  {INFO}VALUES & COLORS:{RESET}")
+    print(f"  - {OK}OK (ms){RESET}    : Service reachable and responding (Green < 100ms, Yellow/Magenta Alert).")
+    print(f"  - {WARN}P_ONLY{RESET}     : Port is OPEN, but DNS Service is NOT responding.")
+    print(f"  - {FAIL}CLOSE/FAIL{RESET} : Port or Service is definitively unreachable.")
+    print(f"  - {OK}SAFE{RESET}       : Properly protected (Not an open resolver).")
+    print(f"  - {FAIL}OPEN{RESET}       : Vulnerable open resolver (RECURSION ENABLED).")
+    print(f"  - {OK}ALIVE{RESET}/{FAIL}DEAD{RESET}: Server's final reachability status.")
+    print("-" * 140)
+
+def print_legend_phase2():
+    """Legend for Phase 2: Zones."""
+    print(f"\n  {BOLD}PHASE 2 LEGEND (Zone Integrity):{RESET}")
+    print(f"  {INFO}COLUMNS:{RESET}")
+    print(f"  - {BOLD}Domain{RESET}      : The DNS zone being tested.")
+    print(f"  - {BOLD}SOA Serial{RESET}  : Zone version ID (must be identical across all servers).")
+    print(f"  - {BOLD}Lat{RESET}         : Response time for the SOA query.")
+    print(f"  - {BOLD}AA{RESET}          : Authoritative Answer flag (Expected for Zone Masters/Slaves).")
+    print(f"  - {BOLD}AXFR Status{RESET} : Zone Transfer vulnerability assessment.")
+    print(f"  {INFO}VALUES & COLORS:{RESET}")
+    print(f"  - {OK}OK(serial){RESET}  : Zone is synchronized and healthy.")
+    print(f"  - {FAIL}FAIL(serial){RESET}: Desynchronized zone (Delayed propagation or outdated serial).")
+    print(f"  - {OK}YES{RESET}/{FAIL}NO{RESET}       : AA Flag (YES is healthy, NO indicates Lame Delegation).")
+    print(f"  - {OK}REFUSED{RESET}     : Secure (AXFR properly blocked).")
+    print(f"  - {FAIL}XFR-OK{RESET}     : VULNERABILITY (Zone transfer allowed on non-secondary server).")
+    print(f"  {INFO}ZONE AUDIT DETAILS:{RESET}")
+    print(f"  - {BOLD}DNSSEC{RESET}      : Zone signing status ({OK}SIGNED{RESET} or {WARN}UNSIGNED{RESET}).")
+    print(f"  - {BOLD}TIMERS{RESET}      : SOA Timer compliance ({OK}RFC-OK{RESET} or {FAIL}NON-COMPLIANT{RESET} with RFC 1912).")
+    print(f"  - {BOLD}MNAME{RESET}       : Primary Master Server reachability ({OK}UP{RESET}, {FAIL}DOWN{RESET}, or {WARN}UNKNOWN{RESET}).")
+    print(f"  - {BOLD}WEB-RISK{RESET}    : Reputation/Malware exposure check ({OK}SAFE{RESET} or {FAIL}EXPOSED!{RESET}).")
+    print("-" * 115)
+
+def print_legend_phase3():
+    """Legend for Phase 3: Records."""
+    print(f"\n  {BOLD}PHASE 3 LEGEND (Record Consistency):{RESET}")
+    print(f"  {INFO}COLUMNS:{RESET}")
+    print(f"  - {BOLD}Type{RESET}        : Record type (A, AAAA, MX, TXT, etc.).")
+    print(f"  - {BOLD}Status{RESET}      : Query result (NOERROR, NXDOMAIN, TIMEOUT, etc.).")
+    print(f"  - {BOLD}Sync{RESET}        : Result stability across multiple sequential queries.")
+    print(f"  {INFO}VALUES & COLORS:{RESET}")
+    print(f"  - {OK}OK{RESET}           : Success (NOERROR) or intentional Negative Response.")
+    print(f"  - {FAIL}FAIL/ERROR{RESET}  : Protocol failure or service timeout.")
+    print(f"  - {OK}OK{RESET} (Sync)    : Stable result (All repeated queries returned identical data).")
+    print(f"  - {WARN}DIV!{RESET} (Sync)   : Divergence (Sequential queries returned different data - Flapping).")
+    print(f"  - {FAIL}↳ ! [Issue]{RESET} : Semantic findings (Dangling DNS, low TTL, SPF errors).")
+    print("-" * 115)

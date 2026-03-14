@@ -1,8 +1,8 @@
-# FriendlyDNSReporter (Python Edition)
+# FriendlyDNSReporter
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v5.1.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v5.2.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -15,6 +15,7 @@ This tool has been completely rewritten in Python to ensure native compatibility
 
 ## 🚀 Features (Buzzwords)
 
+*   **Interactive Terminal Legends (v5.2.0)**: Automatic legends after each diagnostic phase explaining columns, colors, and statuses. Toggled via `.ini`.
 *   **UI Transparency & Colorization (v5.1.0)**: Phase 2 reports exact DNS error codes (e.g., TIMEOUT). Phase 3 sync statuses are fully colorized.
 *   **Deep Service Validation (v5.0.0)**: Differentiates between Port status (socket) and Service status (real DNS response) for UDP, TCP, DoT, and DoH.
 *   **Smart Loader (v5.0.0)**: Automatic detection of CSV delimiters (`,` or `;`) and Type-aware queries (Recursive vs. Authoritative).
@@ -40,7 +41,10 @@ graph TD
         Phase1 --> PortCheck[Port Socket Check]
         PortCheck --> ServiceCheck[Deep Service Validation: UDP, TCP, DoT, DoH]
         ServiceCheck --> CircuitBreaker{Service Functional?}
+        CircuitBreaker -- YES --> Legend1[UI Legend Phase 1]
     end
+
+    Legend1 --> Phase2
 
     CircuitBreaker -- NO --> Skip[Skip Phase 2 & 3 for this Server]
     CircuitBreaker -- YES --> Phase2
@@ -50,6 +54,7 @@ graph TD
         Recursion --> Sync[SOA Serial Sync]
         Sync --> AA[Lame Delegation AA Flag]
         AA --> Advanced[Audit: RFC 1912 & NS Consistency]
+        Advanced --> Legend2[UI Legend Phase 2]
     end
 
     Phase2 --> Phase3
@@ -60,7 +65,8 @@ graph TD
         Phase3 --> Chain[Dangling DNS & MX Target Test]
     end
 
-    Phase3 --> Reports[Generate HTML / JSON / CSV / Terminal]
+    Phase3 --> Legend3[UI Legend Phase 3]
+    Legend3 --> Reports[Generate HTML / JSON / CSV / Terminal]
     Reports --> End((End))
     Skip --> Reports
 ```

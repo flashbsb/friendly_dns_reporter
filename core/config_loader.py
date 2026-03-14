@@ -38,6 +38,10 @@ class Settings:
     def only_test_active_groups(self):
         return self.get_bool("GENERAL", "ONLY_TEST_ACTIVE_GROUPS", True)
 
+    @property
+    def enable_ui_legends(self):
+        return self.get_bool("GENERAL", "ENABLE_UI_LEGENDS", True)
+
     # --- REPORTS ---
     @property
     def log_dir(self):
