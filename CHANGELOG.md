@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.7.0] - 2026-03-15
+### Added
+- **Sarcastic Legal Disclaimer**: Introduced a professional-yet-humorous disclaimer in the terminal, help message, and README to clarify liability and diagnostic limitations.
+
+### Changed
+- **Version Milestone**: Incremented to 6.7.0 reflecting the addition of legal and policy documentation.
+
 ## [6.6.0] - 2026-03-15
 ### Added
 - **Multi-CSV Analytical Export**:

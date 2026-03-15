@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER
 =============================================================================
-Version: 6.6.0
+Version: 6.7.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -860,7 +860,12 @@ def main():
         logging.info(f"Configuration loaded from {settings.path}")
         logging.info(f"Max Threads: {settings.max_threads}, Consistency Checks: {settings.consistency_checks}")
 
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v6.6.0)")
+    parser = argparse.ArgumentParser(
+        description="FriendlyDNSReporter - Professional Suite (v6.7.0)\n"
+                    "WARNING: Use at your own risk. If your DNS explodes, don't blame us.\n"
+                    "Based on factual data, but subject to divine network intervention and creative firewalls.",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -878,7 +883,8 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v6.6.0")
+    ui.print_banner("v6.7.0")
+    ui.print_disclaimer()
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)

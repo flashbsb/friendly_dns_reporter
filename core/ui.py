@@ -28,8 +28,35 @@ def format_grade(score):
 
 def print_banner(version=""):
     print("\n" + "=" * 80)
-    print(f"{BOLD}FRIENDLY DNS REPORTER v6.5.0{RESET}")
+    print(f"{BOLD}FRIENDLY DNS REPORTER v6.7.0{RESET}")
     print("=" * 80)
+
+def print_disclaimer():
+    """Print the sarcastic legal disclaimer."""
+    print(f"{CRIT}{BOLD}⚠️ LEGAL DISCLAIMER (OR 'DON'T SUE ME'){RESET}")
+    print("This script is like a horoscope for your DNS: based on facts, interpreted by")
+    print("algorithms, and subject to the mood of the network gods. By running it, you accept that:")
+    
+    print(f"\n1. {BOLD}Responsibility? Zero.{RESET} If your DNS explodes, your internet vanishes, or your cat")
+    print("   learns COBOL because of this script, it's on you. We aren't lawyers;")
+    print("   we're just people who run `dig` too much.")
+    
+    print(f"\n2. {BOLD}The Journey is Dark.{RESET} The script analyzes what it receives but lacks a crystal ball")
+    print("   to know who intercepted your packet mid-flight. Creative ISPs, paranoid firewalls,")
+    print("   and solar flares are not included in the report.")
+    
+    print(f"\n3. {BOLD}Scores are just Numbers.{RESET} The 0-100 score is a moral guide, not an absolute truth.")
+    print("   A score of 100 doesn't make you master of the universe, and a 0 doesn't")
+    print("   necessarily mean you should change careers.")
+    
+    print(f"\n4. {BOLD}Technological Hallucinations.{RESET} The results are a snapshot in time. If your")
+    print("   environment's reality differs from what the script saw, trust your brain")
+    print("   and analyze with caution.")
+    
+    print(f"\n5. {BOLD}Use at your own risk.{RESET} If you use this as the sole evidence to pick a fight,")
+    print("   remember: 'Because it is always DNS' is a meme for a reason.")
+    print("-" * 80)
+
 
 def print_header(threads, consistency, target):
     print(f"Threads: {threads} | Consistency: {consistency}x | Dataset: {target}")

@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v6.6.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v6.7.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -179,3 +179,13 @@ Please open a Pull Request. We appreciate any help maintaining this "mostly DNS"
 ## 📜 License
 
 MIT. Use it as you wish, just don't blame us if it breaks your DNS.
+
+## ⚠️ Legal Disclaimer (Don't sue me)
+
+This script is like a horoscope for your DNS: based on facts, interpreted by algorithms, and subject to the mood of the network gods. By running it, you accept that:
+
+1.  **Responsibility? Zero.** If your DNS explodes, your internet vanishes, or your cat learns COBOL because of this script, it's on you. We aren't lawyers; we're just people who run `dig` too much.
+2.  **The Journey is Dark.** The script analyzes what it receives but lacks a crystal ball to know who intercepted your packet mid-flight. Creative ISPs, paranoid firewalls, and solar flares are not included in the report.
+3.  **Scores are just Numbers.** The 0-100 score is a moral guide, not an absolute truth. A score of 100 doesn't make you master of the universe, and a 0 doesn't necessarily mean you should change careers.
+4.  **Technological Hallucinations.** The results are a snapshot in time. If your environment's reality differs from what the script saw, trust your brain and analyze with caution.
+5.  **Use at your own risk.** If you use this as the sole evidence to pick a fight, remember: "Because it is always DNS" is a meme for a reason.
