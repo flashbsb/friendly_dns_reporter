@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER
 =============================================================================
-Version: 6.7.0
+Version: 6.8.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -861,7 +861,7 @@ def main():
         logging.info(f"Max Threads: {settings.max_threads}, Consistency Checks: {settings.consistency_checks}")
 
     parser = argparse.ArgumentParser(
-        description="FriendlyDNSReporter - Professional Suite (v6.7.0)\n"
+        description="FriendlyDNSReporter - Professional Suite (v6.8.0)\n"
                     "WARNING: Use at your own risk. If your DNS explodes, don't blame us.\n"
                     "Based on factual data, but subject to divine network intervention and creative firewalls.",
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -883,7 +883,7 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v6.7.0")
+    ui.print_banner("v6.8.0")
     ui.print_disclaimer()
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
@@ -971,15 +971,36 @@ def main():
     }
 
     # Reporting & Summary
+    import platform
     reporter = Reporter(args.output)
+    
     report_data = {
+        "metadata": {
+            "version": "v6.8.0",
+            "timestamp": final_summary["Timestamp"],
+            "arguments": vars(args),
+            "system_info": {
+                "os": platform.system(),
+                "os_release": platform.release(),
+                "python_version": sys.version.split()[0]
+            },
+            "config": {
+                "max_threads": settings.max_threads,
+                "consistency_checks": settings.consistency_checks,
+                "output_directory": args.output
+            }
+        },
         "summary": final_summary, 
-        "phase1_insights": p1_insights,
-        "phase2_insights": p2_insights,
-        "phase3_insights": p3_insights,
-        "infrastructure": infra_cache, 
-        "zones": zone_results, 
-        "results": results
+        "analytics": {
+            "phase1_infrastructure": p1_insights,
+            "phase2_zones": p2_insights,
+            "phase3_records": p3_insights
+        },
+        "detailed_results": {
+            "infrastructure": infra_cache, 
+            "zones": zone_results, 
+            "records": results
+        }
     }
     
     suffix = f"_{datetime.now().strftime('%Y%m%d_%H%M')}" if settings.enable_report_timestamps else ""
@@ -1020,7 +1041,13 @@ def main():
         paths["CSV_SUM_FINAL"] = reporter.export_csv([final_summary], f"summary_final{suffix}.csv", list(final_summary.keys()))
 
     if settings.enable_html_report: 
-        paths["HTML"] = reporter.generate_html(report_data, f"dashboard{suffix}.html")
+        html_context = {
+            "summary": final_summary,
+            "infrastructure": infra_cache,
+            "zones": zone_results,
+            "results": results
+        }
+        paths["HTML"] = reporter.generate_html(html_context, f"dashboard{suffix}.html")
     
     # Filter out empty paths
     paths = {k: v for k, v in paths.items() if v}

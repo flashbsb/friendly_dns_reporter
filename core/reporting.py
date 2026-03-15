@@ -12,7 +12,7 @@ class Reporter:
     def export_json(self, data, filename):
         path = os.path.join(self.output_dir, filename)
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
+            json.dump(data, f, indent=4, ensure_ascii=False)
         return path
 
     def export_csv(self, data, filename, fieldnames):

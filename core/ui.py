@@ -28,7 +28,7 @@ def format_grade(score):
 
 def print_banner(version=""):
     print("\n" + "=" * 80)
-    print(f"{BOLD}FRIENDLY DNS REPORTER v6.7.0{RESET}")
+    print(f"{BOLD}FRIENDLY DNS REPORTER v6.8.0{RESET}")
     print("=" * 80)
 
 def print_disclaimer():

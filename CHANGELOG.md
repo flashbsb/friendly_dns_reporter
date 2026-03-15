@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.8.0] - 2026-03-15
+### Added
+- **Professional JSON Execution Metadata**: Integrated `metadata` section in `report.json` containing script version, CLI arguments, system information (OS/Python), and runtime configuration.
+- **Hierarchical JSON Layout**: Reorganized report structure into `metadata`, `summary`, `analytics`, and `detailed_results` for better automation compatibility.
+- **UTF-8 Support in JSON**: Forced `ensure_ascii=False` in the reporting engine to preserve decorative symbols (like ⚠️) in programmatic outputs.
+
+### Changed
+- **Version Milestone**: Incremented to 6.8.0 reflecting the reporting engine overhaul.
+
 ## [6.7.0] - 2026-03-15
 ### Added
 - **Sarcastic Legal Disclaimer**: Introduced a professional-yet-humorous disclaimer in the terminal, help message, and README to clarify liability and diagnostic limitations.

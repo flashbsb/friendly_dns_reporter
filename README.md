@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v6.7.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v6.8.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -15,6 +15,7 @@ This tool has been completely rewritten in Python to ensure native compatibility
 
 ## 🚀 Features (Buzzwords)
 
+*   **Professional JSON Reporting (v6.8.0)**: Hierarchical output with execution metadata and system info for automation.
 *   **Extended Forensic Legends (v6.5.0)**: Exhaustive definitions for PING, technical statuses, and scoring weights.
 *   **Triple Double Legend System (v6.4.0)**: Sequential legends (Technical Table -> Analysis Summary) for every phase.
 *   **Analytical Legends (v6.3.0)**: Contextual explanations for forensic indices.
