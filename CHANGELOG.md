@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.6.0] - 2026-03-15
+### Added
+- **Multi-CSV Analytical Export**:
+  - Split the single CSV report into up to 7 specialized files for massive data analysis.
+  - New detail files: `details_phase1_infrastructure.csv`, `details_phase2_zones.csv`, `details_phase3_records.csv`.
+  - New summary files: `summary_phase1.csv`, `summary_phase2.csv`, `summary_phase3.csv`, `summary_final.csv`.
+- **Integrated Technical Glossary**: Added a comprehensive status meaning section to the README for easier auditing.
+
+### Changed
+- **Reporting Engine UI**: Updated terminal summary to reflect the new specialized CSV output paths.
+- **Data Model Expansion**: Phase functions now return specialized analytical insights for granular reporting.
+
 ## [6.5.0] - 2026-03-14
 ### Added
 - **Extended Forensic Legends**:

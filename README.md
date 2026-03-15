@@ -2,7 +2,7 @@
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Stable_(v6.5.0)-green.svg)]()
+[![Status](https://img.shields.io/badge/Status-Stable_(v6.6.0)-green.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
 Does your boss ask for "evidence" that the DNS is broken? 
@@ -79,7 +79,7 @@ graph TD
     end
 
     LegendA3 --> Scoring[Calculate Privacy & Security Scores]
-    Scoring --> Reports[Generate HTML / JSON / CSV / Terminal]
+    Scoring --> Reports[Generate HTML / JSON / Multi-CSV / Terminal]
     Reports --> End((End))
     Skip --> Reports
 ```
@@ -137,6 +137,19 @@ The `settings.ini` file centralizes script behavior:
 - `DNS_TIMEOUT` / `DNS_RETRIES`: Native engine execution parameters.
 - `LOG_DIR`: Directory where reports are saved.
 - `STRICT_*_CHECK`: Define tolerance for record consistency (IP, TTL, Order).
+
+## 📖 Technical Glossary (Status Meanings)
+
+Understanding the diagnostic outputs:
+
+| Status | Phase | Meaning |
+|--------|-------|---------|
+| `OK` | All | Service is functional and responding correctly. |
+| `P_ONLY` | 1 | **Port Only**. TCP/UDP port is open, but the DNS service is NOT responding to queries. |
+| `DIV!` | 3 | **Divergent**. Stability marker indicating inconsistent results across sequential queries (flapping/rounding records). |
+| `LAME` | 2 | **Lame Delegation**. Server is listed as authoritative but the Authoritative Answer (AA) flag is missing in the response. |
+| `XFR-OK` | 2 | **AXFR Vulnerability**. Zone transfer is allowed, which may leak your entire DNS zone data. |
+| `SAFE` | 1 | **Open Resolver Check**. Server is not vulnerable to being used in DNS Amplification DDoS attacks. |
 
 ## 📄 Input Files
 

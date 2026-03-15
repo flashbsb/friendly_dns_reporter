@@ -5,7 +5,7 @@
 =============================================================================
 FRIENDLY DNS REPORTER
 =============================================================================
-Version: 6.5.0
+Version: 6.6.0
 Author: flashbsb
 Description: 3-Phase Automated DNS diagnostics for Windows and Linux.
 =============================================================================
@@ -348,7 +348,7 @@ def run_phase1_infrastructure(servers, srv_groups, conn, dns_engine, settings, l
     if settings.enable_ui_legends:
         ui.print_legend_phase1_analytics()
 
-    return infra_results
+    return infra_results, insights
 
 def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock):
     """Phase 2: Zone Integrity & SOA Synchronization."""
@@ -614,7 +614,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     if settings.enable_ui_legends:
         ui.print_legend_phase2_analytics()
 
-    return zone_results
+    return zone_results, insights
 
 def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock):
     """Phase 3: Parallel Record Consistency Check."""
@@ -778,6 +778,8 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     if settings.enable_ui_legends:
         ui.print_legend_phase3_analytics()
 
+    return results, insights
+
 def calculate_server_score(res):
     """Calculate a 0-100 score for a single server infrastructure."""
     if res.get('is_dead'): return 0
@@ -858,7 +860,7 @@ def main():
         logging.info(f"Configuration loaded from {settings.path}")
         logging.info(f"Max Threads: {settings.max_threads}, Consistency Checks: {settings.consistency_checks}")
 
-    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v6.5.0)")
+    parser = argparse.ArgumentParser(description="FriendlyDNSReporter - Professional Suite (v6.6.0)")
     parser.add_argument("-n", "--domains", default=os.path.join("config", "domains.csv"), help="Domains CSV")
     parser.add_argument("-g", "--groups", default=os.path.join("config", "groups.csv"), help="Groups CSV")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
@@ -876,7 +878,7 @@ def main():
         run_p2 = "2" in selected
         run_p3 = "3" in selected
 
-    ui.print_banner("v6.5.0")
+    ui.print_banner("v6.6.0")
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
@@ -919,16 +921,19 @@ def main():
         sys.exit(1)
     
     infra_cache = {}
+    p1_insights = {}
     if run_p1:
         ui.print_phase("1: Server Infrastructure")
-        infra_cache = run_phase1_infrastructure(all_servers, srv_to_groups, conn, dns_engine, settings, lock)
+        infra_cache, p1_insights = run_phase1_infrastructure(all_servers, srv_to_groups, conn, dns_engine, settings, lock)
     
     zone_results = []
+    p2_insights = {}
     if run_p2:
         ui.print_phase("2: Zone Integrity")
-        zone_results = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock)
+        zone_results, p2_insights = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock)
     
     results = []
+    p3_insights = {}
     if run_p3:
         ui.print_phase("3: Record Consistency")
         tasks = []
@@ -941,20 +946,77 @@ def main():
                     group = group.strip().upper()
                     for server in dns_groups.get(group, {}).get("servers", []):
                         tasks.append((target, group, server, (entry.get('RECORDS') or '').split(',')))
-        run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
+        results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
+
+    # Final Analytics Calculation
+    sec_score, priv_score = calculate_scores(infra_cache, zone_results)
+    avg_score = (sec_score + priv_score) / 2
+    grade = ui.format_grade(avg_score).replace("\033[92m", "").replace("\033[91m", "").replace("\033[93m", "").replace("\033[0m", "")
+    final_summary = {
+        "Total Queries": len(results),
+        "Success (OK)": sum(1 for r in results if r['status'] == "NOERROR"),
+        "Divergences (DIV!)": sum(1 for r in results if r['internally_consistent'] == "DIV!"),
+        "Sync/Zone Issues": sum(1 for z in zone_results if z['serial'] == "?" or z['status'] == "UNREACHABLE"),
+        "Security Score": sec_score,
+        "Privacy Score": priv_score,
+        "Global Grade": grade,
+        "Execution Time (s)": round(time.time() - script_start_time, 2),
+        "Timestamp": datetime.now().isoformat()
+    }
 
     # Reporting & Summary
     reporter = Reporter(args.output)
-    report_data = {"summary": {"total": len(results), "timestamp": datetime.now().isoformat()}, "infrastructure": infra_cache, "zones": zone_results, "results": results}
+    report_data = {
+        "summary": final_summary, 
+        "phase1_insights": p1_insights,
+        "phase2_insights": p2_insights,
+        "phase3_insights": p3_insights,
+        "infrastructure": infra_cache, 
+        "zones": zone_results, 
+        "results": results
+    }
     
     suffix = f"_{datetime.now().strftime('%Y%m%d_%H%M')}" if settings.enable_report_timestamps else ""
     
     paths = {}
-    if settings.enable_json_report: paths["JSON"] = reporter.export_json(report_data, f"report{suffix}.json")
-    if settings.enable_csv_report: paths["CSV"] = reporter.export_csv(results, f"report{suffix}.csv", list(results[0].keys()) if results else [])
-    if settings.enable_html_report: paths["HTML"] = reporter.generate_html(report_data, f"dashboard{suffix}.html")
+    if settings.enable_json_report: 
+        paths["JSON"] = reporter.export_json(report_data, f"report{suffix}.json")
     
-    # Filter out empty paths (fixes request to not show 'Reports Generated' header if none created)
+    if settings.enable_csv_report:
+        # 1. Details Phase 1 (Infrastructure)
+        infra_list = []
+        for srv, data in infra_cache.items():
+            row = {"server": srv}
+            row.update(data)
+            infra_list.append(row)
+        if infra_list:
+            paths["CSV_INFRA"] = reporter.export_csv(infra_list, f"details_phase1_infrastructure{suffix}.csv", list(infra_list[0].keys()))
+            
+        # 2. Details Phase 2 (Zones)
+        if zone_results:
+            # Flatten zone_audit if exists
+            zone_csv_data = []
+            for z in zone_results:
+                row = z.copy()
+                audit = row.pop('zone_audit', {})
+                for k, v in audit.items(): row[f"audit_{k}"] = v
+                zone_csv_data.append(row)
+            paths["CSV_ZONES"] = reporter.export_csv(zone_csv_data, f"details_phase2_zones{suffix}.csv", list(zone_csv_data[0].keys()))
+
+        # 3. Details Phase 3 (Records)
+        if results:
+            paths["CSV_RECORDS"] = reporter.export_csv(results, f"details_phase3_records{suffix}.csv", list(results[0].keys()))
+
+        # 4-7. Summaries
+        if p1_insights: paths["CSV_SUM_P1"] = reporter.export_csv([p1_insights], f"summary_phase1{suffix}.csv", list(p1_insights.keys()))
+        if p2_insights: paths["CSV_SUM_P2"] = reporter.export_csv([p2_insights], f"summary_phase2{suffix}.csv", list(p2_insights.keys()))
+        if p3_insights: paths["CSV_SUM_P3"] = reporter.export_csv([p3_insights], f"summary_phase3{suffix}.csv", list(p3_insights.keys()))
+        paths["CSV_SUM_FINAL"] = reporter.export_csv([final_summary], f"summary_final{suffix}.csv", list(final_summary.keys()))
+
+    if settings.enable_html_report: 
+        paths["HTML"] = reporter.generate_html(report_data, f"dashboard{suffix}.html")
+    
+    # Filter out empty paths
     paths = {k: v for k, v in paths.items() if v}
     if settings.enable_execution_log:
         for label, path in paths.items():
