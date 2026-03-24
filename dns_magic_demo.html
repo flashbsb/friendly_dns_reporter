@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friendly DNS Reporter | The Internet's Postal Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --surface: #121215;
+            --accent: #b0ff00; /* Acid Green */
+            --warning: #ff9900; /* Signal Orange */
+            --error: #ff3333;
+            --text-primary: #ffffff;
+            --text-secondary: #9ea3b0;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'Outfit', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-primary);
+            font-family: var(--sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Brutalist Cursor */
+        .cursor {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--accent);
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform 0.1s ease-out;
+            mix-blend-mode: difference;
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .hero-title {
+            font-size: clamp(3rem, 10vw, 8rem);
+            font-weight: 900;
+            line-height: 0.9;
+            text-transform: uppercase;
+            letter-spacing: -0.05em;
+            margin-bottom: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero-subtitle {
+            font-family: var(--mono);
+            color: var(--accent);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+        }
+
+        .hero-image {
+            position: absolute;
+            right: -10%;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 60%;
+            opacity: 0.3;
+            filter: grayscale(1) contrast(1.5);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Phases Narrative */
+        .phase {
+            padding: 10rem 0;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+        }
+
+        .phase-number {
+            font-family: var(--mono);
+            font-size: 8rem;
+            font-weight: 900;
+            color: rgba(255,255,255,0.03);
+            position: absolute;
+            top: 2rem;
+            left: -2rem;
+            z-index: 0;
+        }
+
+        .phase-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 90/10 Asymmetry override on some phases */
+        .phase.asymmetric .phase-content {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        .phase-meta {
+            font-family: var(--mono);
+            color: var(--accent);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .phase-title {
+            font-size: 3.5rem;
+            font-weight: 900;
+            margin-bottom: 1.5rem;
+            line-height: 1;
+        }
+
+        .phase-desc {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            max-width: 500px;
+        }
+
+        /* Technical Log Callouts */
+        .log-box {
+            background: var(--surface);
+            padding: 2rem;
+            font-family: var(--mono);
+            font-size: 0.9rem;
+            border-left: 4px solid var(--accent);
+            position: relative;
+            box-shadow: 20px 20px 0px rgba(0,0,0,0.5);
+            transform: skew(-2deg);
+        }
+
+        .log-line {
+            margin-bottom: 0.5rem;
+            opacity: 0;
+            transform: translateX(-10px);
+        }
+
+        .log-line.active {
+            opacity: 1;
+            transform: translateX(0);
+            transition: all 0.3s ease-out;
+        }
+
+        .log-tag {
+            color: var(--bg);
+            background: var(--accent);
+            padding: 0 0.5rem;
+            margin-right: 0.5rem;
+            font-weight: bold;
+        }
+
+        /* Funny Sidecards */
+        .funny-card {
+            background: var(--warning);
+            color: var(--bg);
+            padding: 2rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            transform: rotate(2deg);
+            position: relative;
+            margin-top: 2rem;
+        }
+
+        .funny-card::before {
+            content: "💡";
+            font-size: 2rem;
+            position: absolute;
+            top: -20px;
+            right: -10px;
+        }
+
+        /* Animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: rgba(255,255,255,0.05);
+            z-index: 1000;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .phase-content {
+                grid-template-columns: 1fr !important;
+            }
+            .hero-title {
+                font-size: 4rem;
+            }
+            .hero-image {
+                width: 100%;
+                opacity: 0.1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="cursor"></div>
+    <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
+
+    <header class="hero container">
+        <div class="hero-subtitle reveal">Service Diagnostic Report</div>
+        <h1 class="hero-title reveal">Friendly<br>DNS<br>Reporter</h1>
+        <p class="phase-desc reveal">The Internet's Postal Service is complicated. Our script makes sure your digital letters find their way home safely, without the technical headaches.</p>
+        <img src="dns_sherpa_hero_1774363232513.png" alt="DNS Sherpa Illustration" class="hero-image">
+    </header>
+
+    <main>
+        <!-- Phase 1 -->
+        <section class="phase container reveal asymmetric" id="phase1">
+            <div class="phase-number">01</div>
+            <div class="phase-content">
+                <div>
+                    <div class="phase-meta">#PHASE_01_INFRASTRUCTURE</div>
+                    <h2 class="phase-title">Is the Post Office Open?</h2>
+                    <p class="phase-desc">First, we check if the building exists and someone is answering the phone. If the building is on fire, we stop right there.</p>
+                    
+                    <div class="funny-card">
+                        "If the post office is closed, it doesn't matter how fast your stamps are!"
+                    </div>
+                </div>
+                <div>
+                    <div class="log-box">
+                        <div class="log-line"><span class="log-tag">CHECK</span> Pinging Post Office... <span style="color:var(--accent)">[OK]</span></div>
+                        <div class="log-line"><span class="log-tag">CHECK</span> Opening front door (Port 53)... <span style="color:var(--accent)">[OK]</span></div>
+                        <div class="log-line"><span class="log-tag">CHECK</span> Testing truck engines (UDP Service)... <span style="color:var(--accent)">[OK]</span></div>
+                        <div class="log-line"><span class="log-tag">WARN</span> Door is wide open to strangers! (Open Resolver)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 2 -->
+        <section class="phase container reveal" id="phase2">
+            <div class="phase-number">02</div>
+            <div class="phase-content">
+                <div class="log-box" style="transform: skew(2deg); border-left: none; border-right: 4px solid var(--warning);">
+                    <div class="log-line"><span class="log-tag" style="background:var(--warning)">MAP</span> Checking Street Signs (NS Records)...</div>
+                    <div class="log-line"><span class="log-tag" style="background:var(--warning)">MAP</span> Are signs consistent? <span style="color:var(--warning)">[CONSISTENT]</span></div>
+                    <div class="log-line"><span class="log-tag" style="background:var(--warning)">MAP</span> Neighborhood Zone check... <span style="color:var(--accent)">[HEALTHY]</span></div>
+                </div>
+                <div>
+                    <div class="phase-meta" style="color:var(--warning)">#PHASE_02_ZONES</div>
+                    <h2 class="phase-title">Checking the Maps</h2>
+                    <p class="phase-desc">Every neighborhood needs a map. We verify if the street signs are readable and if the town's blueprint matches what the world sees.</p>
+                    
+                    <div class="funny-card" style="background:var(--accent); transform: rotate(-2deg);">
+                        "You can't deliver mail if the mailbox is in the middle of a lake!"
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase 3 -->
+        <section class="phase container reveal asymmetric" id="phase3">
+            <div class="phase-number">03</div>
+            <div class="phase-content">
+                <div>
+                    <div class="phase-meta">#PHASE_03_RECORDS</div>
+                    <h2 class="phase-title">The Final Delivery</h2>
+                    <p class="phase-desc">Finally, we knock on the door. Does 'Aunt Mabel' actually live at 123 Internet Lane? We check every record to ensure total accuracy.</p>
+                    
+                    <div class="funny-card">
+                        "Checking to make sure Aunt Mabel isn't actually a wolf in a nightgown."
+                    </div>
+                </div>
+                <div>
+                    <div class="log-box">
+                        <div class="log-line"><span class="log-tag">QUERY</span> Finding Mabel (A Record)... <span style="color:var(--accent)">[FOUND]</span></div>
+                        <div class="log-line"><span class="log-tag">QUERY</span> Encrypting the letter (DNSSEC)... <span style="color:var(--accent)">[SECURE]</span></div>
+                        <div class="log-line"><span class="log-tag">QUERY</span> Check for Impostors... <span style="color:var(--accent)">[NONE]</span></div>
+                        <div class="log-line"><span class="log-tag">DONE</span> Everything in its place!</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="container" style="padding: 10rem 0; text-align: center;">
+        <h2 class="hero-title" style="font-size: 4rem;">Diagnostic<br>Complete</h2>
+        <p class="phase-desc" style="margin: 0 auto;">Everything safe. Everything friendly. Powered by <code>friendly_dns_reporter.py</code></p>
+    </footer>
+
+    <script>
+        // Custom Cursor
+        const cursor = document.querySelector('.cursor');
+        document.addEventListener('mousemove', (e) => {
+            cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+        });
+
+        // Intersection Observer for Reveal
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    // Animate log lines if present
+                    const lines = entry.target.querySelectorAll('.log-line');
+                    lines.forEach((line, index) => {
+                        setTimeout(() => line.classList.add('active'), 500 + index * 200);
+                    });
+                }
+            });
+        }, { threshold: 0.2 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Progress Bar
+        window.addEventListener('scroll', () => {
+            const windowHeight = window.innerHeight;
+            const fullHeight = document.documentElement.scrollHeight;
+            const scrollPos = window.pageYOffset;
+            const progress = (scrollPos / (fullHeight - windowHeight)) * 100;
+            document.getElementById('progressBar').style.width = progress + '%';
+        });
+    </script>
+</body>
+</html>
