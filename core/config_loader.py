@@ -42,6 +42,22 @@ class Settings:
     def enable_ui_legends(self):
         return self.get_bool("GENERAL", "ENABLE_UI_LEGENDS", True)
 
+    @property
+    def file_domains(self):
+        return self.get_str("GENERAL", "FILE_DOMAINS", os.path.join("config", "domains.csv"))
+
+    @property
+    def file_groups(self):
+        return self.get_str("GENERAL", "FILE_GROUPS", os.path.join("config", "groups.csv"))
+
+    @property
+    def watchdog_interval(self):
+        return self.get_float("GENERAL", "WATCHDOG_INTERVAL", 2.0)
+
+    @property
+    def watchdog_join_timeout(self):
+        return self.get_float("GENERAL", "WATCHDOG_JOIN_TIMEOUT", 0.1)
+
     # --- REPORTS ---
     @property
     def log_dir(self):
@@ -87,6 +103,22 @@ class Settings:
     @property
     def dns_retries(self):
         return self.get_int("DNS_ENGINE", "DNS_RETRIES", 1)
+
+    @property
+    def doh_verify_ssl(self):
+        return self.get_bool("DNS_ENGINE", "DOH_VERIFY_SSL", True)
+
+    @property
+    def default_query_domain(self):
+        return self.get_str("DNS_ENGINE", "DEFAULT_QUERY_DOMAIN", "google.com")
+
+    @property
+    def dnssec_root_target(self):
+        return self.get_str("DNS_ENGINE", "DNSSEC_ROOT_TARGET", ".")
+
+    @property
+    def doh_url_path(self):
+        return self.get_str("DNS_ENGINE", "DOH_URL_PATH", "/dns-query")
 
     # --- PHASES ---
     @property

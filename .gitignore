@@ -1,5 +1,6 @@
 infos/
 *test*
+.agent/
 
 # Python
 __pycache__/
