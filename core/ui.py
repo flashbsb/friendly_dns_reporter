@@ -108,9 +108,11 @@ def _fmt_probe_evidence(data, probe_name, label=None):
 
     details = []
     if protocol:
-        details.append(f"proto={protocol}")
+        details.append(f"proto={INFO}{protocol}{RESET}")
     if rcode:
-        details.append(f"rcode={rcode}")
+        # Colorize common RCODEs
+        clr = OK if rcode == "NOERROR" else (WARN if rcode in ["NXDOMAIN", "REFUSED"] else FAIL)
+        details.append(f"rcode={clr}{rcode}{RESET}")
     if flags:
         details.append(f"flags={','.join(str(f) for f in flags[:4])}")
     if query_size is not None:
@@ -122,13 +124,14 @@ def _fmt_probe_evidence(data, probe_name, label=None):
     if answer_count is not None:
         details.append(f"answers={answer_count}")
     if aa is not None:
-        details.append(f"aa={'Y' if aa else 'N'}")
+        details.append(f"aa={OK if aa else FAIL}{'Y' if aa else 'N'}{RESET}")
     if tc is not None:
-        details.append(f"tc={'Y' if tc else 'N'}")
+        details.append(f"tc={WARN if tc else OK}{'Y' if tc else 'N'}{RESET}")
     if http_status is not None:
-        details.append(f"http={http_status}")
+        clr = OK if http_status == 200 else FAIL
+        details.append(f"http={clr}{http_status}{RESET}")
     if ra is not None:
-        details.append(f"ra={'Y' if ra else 'N'}")
+        details.append(f"ra={OK if ra else FAIL}{'Y' if ra else 'N'}{RESET}")
 
     if not details:
         return f"{label}=N/A"
@@ -453,7 +456,11 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     last_sub_prefix = "  " + tree_indent + "└─ "
 
     # ├─ Profile/Resolver/Version
-    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile:9} | {BOLD}Resolver{RESET}: {resolver_class}/{resolver_conf:7} | {BOLD}Version{RESET}: {version}")
+    profile_clr = OK if profile == "authoritative" else (INFO if profile == "recursive" else WARN)
+    resolver_clr = FAIL if resolver_class == "PUBLIC" else (OK if resolver_class == "RESTRICTED" else RESET)
+    version_clr = OK if version not in ["HIDDEN", "N/A", "DISABLED", "TIMEOUT"] else WARN
+    
+    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile_clr}{profile:9}{RESET} | {BOLD}Resolver{RESET}: {resolver_clr}{resolver_class:10}{RESET}/{resolver_conf:7} | {BOLD}Version{RESET}: {version_clr}{version}{RESET}")
     
     # ├─ Transit (Ping/UDP/TCP)
     ping_avg = _fmt_latency(data.get('latency'))
@@ -549,7 +556,7 @@ def print_zone_detail(srv, domain, res, level=2, is_last=False):
     ns_consistent = f"{OK}YES{RESET}" if ns_consistent_val is True else (f"{FAIL}NO{RESET}" if ns_consistent_val is False else "N/E")
     
     scope = res.get("check_scope", "FULL")
-    scope_clr = OK if scope == "FULL" else WARN
+    scope_clr = OK if scope == "FULL" else (FAIL if scope == "ERROR" else WARN)
     
     audit_data = res.get("zone_audit", {})
     timer_audit_str = f"{OK}RFC-OK{RESET}" if audit_data.get("timers_ok", True) else f"{FAIL}RFC-FAIL{RESET}"
@@ -646,7 +653,7 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
         status_str = f"{status_str[:9]}(AD+)" if len(status_str) > 9 else f"{status_str}(AD+)"
 
     lat_str = _fmt_latency(latency, 1, warn_ms=warn_ms, crit_ms=crit_ms)
-    consistency_str = f" [{WARN}DIV!{RESET}]" if not is_consistent else f"{OK}OK{RESET}"
+    consistency_str = f" [{FAIL}DIV!{RESET}]" if not is_consistent else f"[{OK}OK{RESET}]"
     
     server_str = _ellipsize(server, 15)
     
@@ -654,7 +661,7 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
     conn = _get_tree_connector(level, is_last)
     
     # Layout: TARGET (Removed) | GROUP (Removed) | SERVER | TYPE | STATUS | LATENCY | Sync
-    return f"  {conn}{server_str:15} | {rtype:5} | {status_clr}{status_str:12}{RESET} | {lat_str:8} | {consistency_str}"
+    return f"  {conn}{server_str:15} | {INFO}{rtype:5}{RESET} | {status_clr}{status_str:12}{RESET} | {lat_str:8} | {consistency_str}"
 
 def print_record_findings(findings):
     """Print semantic findings/warnings for a specific record."""
@@ -696,10 +703,10 @@ def print_record_context(record, level=3):
     sub_prefix = "  " + tree_indent + "├─ "
     last_sub_prefix = "  " + tree_indent + "└─ "
 
-    print(f"{sub_prefix}Transit: Ping={_fmt_latency(record.get('ping_latency'))} | DNS: UDP={_fmt_latency(record.get('latency'))} | Amplification: {amp_str}")
-    print(f"{sub_prefix}Crypto : DoT={_fmt_latency(record.get('dot_latency'))} | DoH={_fmt_latency(record.get('doh_latency'))}")
-    print(f"{sub_prefix}Perf   : Jitter={_fmt_latency(record.get('latency_jitter'))} | Avg={_fmt_latency(record.get('latency_avg'))} | Chain: {chain_str}")
-    print(f"{last_sub_prefix}NSID: {nsid} | Answers: {answers}")
+    print(f"{sub_prefix}Transit: {BOLD}Ping{RESET}={_fmt_latency(record.get('ping_latency'))} | {BOLD}DNS: UDP{RESET}={_fmt_latency(record.get('latency'))} | {BOLD}Amplification{RESET}: {amp_str}")
+    print(f"{sub_prefix}Crypto : {BOLD}DoT{RESET}={_fmt_latency(record.get('dot_latency'))} | {BOLD}DoH{RESET}={_fmt_latency(record.get('doh_latency'))}")
+    print(f"{sub_prefix}Perf   : {BOLD}Jitter{RESET}={_fmt_latency(record.get('latency_jitter'))} | {BOLD}Avg{RESET}={_fmt_latency(record.get('latency_avg'))} | {BOLD}Chain{RESET}: {chain_str}")
+    print(f"{last_sub_prefix}{BOLD}NSID{RESET}: {nsid} | {BOLD}Answers{RESET}: {answers}")
 
 def print_progress(current, total, prefix="", length=30, status_suffix=""):
     """Prints a carriage-return progress bar."""

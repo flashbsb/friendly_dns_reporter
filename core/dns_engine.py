@@ -1,6 +1,8 @@
 import dns.resolver
 import dns.query
 import dns.message
+import dns.rdatatype
+import dns.rdataclass
 import dns.rcode
 import dns.exception
 import dns.flags
@@ -296,21 +298,42 @@ class DNSEngine:
             return DNSResponse(status="FAIL")
 
     def query_version(self, server) -> DNSResponse:
-        """Query the BIND version."""
-        start = time.time()
-        try:
-            query = dns.message.make_query("version.bind", "TXT", rdclass=dns.rclass.CH)
-            query_size = len(query.to_wire())
-            response = dns.query.udp(query, server, timeout=self.timeout)
-            latency = (time.time() - start) * 1000
-            if response.answer:
-                version = response.answer[0][0].to_text().strip('"')
-                return self._as_response("OK", latency, response, extra={"version": version, "query_class": "CH", "query_name": "version.bind", "query_size": query_size})
-            return self._as_response("HIDDEN", latency, response, extra={"query_class": "CH", "query_name": "version.bind", "query_size": query_size})
-        except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, meta={"query_class": "CH"})
-        except:
-            return DNSResponse(status="HIDDEN", meta={"query_class": "CH"})
+        """Query the DNS server version using common CHAOS TXT aliases."""
+        aliases = [
+            ("version.bind", "TXT"), 
+            ("version.server", "TXT"), 
+            ("hostname.bind", "TXT"), 
+            ("id.server", "TXT")
+        ]
+        
+        last_response = None
+        for name, rtype in aliases:
+            start = time.time()
+            try:
+                query = dns.message.make_query(name, rtype, rdclass=dns.rdataclass.CH)
+                query_size = len(query.to_wire())
+                response = dns.query.udp(query, server, timeout=self.timeout)
+                latency = (time.time() - start) * 1000
+                
+                if response.answer:
+                    version = response.answer[0][0].to_text().strip('"')
+                    return self._as_response("OK", latency, response, extra={
+                        "version": version, 
+                        "query_class": "CH", 
+                        "query_name": name, 
+                        "query_size": query_size
+                    })
+                last_response = self._as_response("HIDDEN", latency, response, extra={
+                    "query_class": "CH", 
+                    "query_name": name, 
+                    "query_size": query_size
+                })
+            except dns.exception.Timeout:
+                last_response = DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, meta={"query_class": "CH", "query_name": name})
+            except Exception as e:
+                last_response = DNSResponse(status="HIDDEN", meta={"query_class": "CH", "query_name": name, "error": str(e)})
+                
+        return last_response or DNSResponse(status="HIDDEN", meta={"query_class": "CH"})
 
     def check_dot(self, server) -> DNSResponse:
         """Check if server supports DoT."""
