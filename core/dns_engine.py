@@ -18,10 +18,16 @@ class DNSResponse:
     latency: Optional[float] = None
     answers: List[str] = field(default_factory=list)
     authority: List[str] = field(default_factory=list)
+    additional: List[str] = field(default_factory=list)
     protocol: str = "udp"
     flags: List[str] = field(default_factory=list)
     aa: bool = False
     tc: bool = False
+    rd: bool = False
+    ra: bool = False
+    ad: bool = False
+    cd: bool = False
+    rcode: int = 0
     nsid: Optional[str] = None
     ttl: int = 0
     query_size: int = 0
@@ -104,10 +110,16 @@ class DNSEngine:
                     flags=dns.flags.to_text(response.flags).split(),
                     aa=bool(response.flags & dns.flags.AA),
                     tc=bool(response.flags & dns.flags.TC),
+                    rd=bool(response.flags & dns.flags.RD),
+                    ra=bool(response.flags & dns.flags.RA),
+                    ad=bool(response.flags & dns.flags.AD),
+                    cd=bool(response.flags & dns.flags.CD),
+                    rcode=response.rcode(),
                     answer_count=sum(len(rrset) for rrset in response.answer) if response.answer else 0,
                     authority_count=sum(len(rrset) for rrset in response.authority) if response.authority else 0,
                     answers=answers,
                     authority=authority,
+                    additional=additional,
                     nsid=nsid,
                     ttl=ttl,
                     full_response=response.to_text()
@@ -154,15 +166,27 @@ class DNSEngine:
                 for rr in rrset:
                     authority.append(rr.to_text())
 
+        additional = []
+        if response.additional:
+            for rrset in response.additional:
+                for rr in rrset:
+                    additional.append(rr.to_text())
+
         return DNSResponse(
             status=status,
             latency=latency,
             answers=answers,
             authority=authority,
+            additional=additional,
             protocol=protocol,
             flags=dns.flags.to_text(response.flags).split(),
             aa=bool(response.flags & dns.flags.AA),
             tc=bool(response.flags & dns.flags.TC),
+            rd=bool(response.flags & dns.flags.RD),
+            ra=bool(response.flags & dns.flags.RA),
+            ad=bool(response.flags & dns.flags.AD),
+            cd=bool(response.flags & dns.flags.CD),
+            rcode=response.rcode(),
             response_size=len(response.to_wire()),
             answer_count=len(answers),
             authority_count=len(authority),
@@ -406,12 +430,12 @@ class DNSEngine:
             latencies = []
             for family in ["A", "AAAA"]:
                 res = self.query(server, target, family, rd=rd)
-                if res.get("latency"):
-                    latencies.append(res["latency"])
-                if res['status'] == "NOERROR" and res['answers']:
+                if res.latency:
+                    latencies.append(res.latency)
+                if res.status == "NOERROR" and res.answers:
                     has_ip = True
                     break
-                if res['status'] == "NXDOMAIN":
+                if res.status == "NXDOMAIN":
                     return False, "NXDOMAIN (Dangling!)", (sum(latencies) / len(latencies)) if latencies else None
             
             if has_ip:
@@ -420,11 +444,11 @@ class DNSEngine:
         except:
             return False, "ERROR", None
 
-    def check_port_25(self, server):
-        """Check if SMTP port 25 is open on a target (MX Reachability)."""
+    def check_port_25(self, server, port=25):
+        """Check if SMTP port (default 25) is open on a target (MX Reachability)."""
         start = time.time()
         try:
-            with socket.create_connection((server, 25), timeout=2.0):
+            with socket.create_connection((server, port), timeout=2.0):
                 latency = (time.time() - start) * 1000
                 return True, latency
         except:

@@ -216,10 +216,6 @@ class Settings:
     def enable_dns_cookies_check(self):
         return self.get_bool("ADVANCED_CHECKS", "ENABLE_DNS_COOKIES_CHECK", True)
 
-    @property
-    def enable_dnssec_chain_val(self):
-        return self.get_bool("ADVANCED_CHECKS", "ENABLE_DNSSEC_CHAIN_VAL", False)
-
     # --- ZONE TESTS ---
     @property
     def enable_axfr_check(self):
@@ -231,9 +227,8 @@ class Settings:
         return [g.strip().upper() for g in val.split(',') if g.strip()]
 
     @property
-    def enable_soa_serial_sync(self):
-        # We use a simpler serial check in Zone phase
-        return True
+    def smtp_port(self):
+        return self.get_int("ZONE_TESTS", "SMTP_PORT", 25)
 
     @property
     def enable_web_risk_check(self):
@@ -250,6 +245,50 @@ class Settings:
     @property
     def enable_zone_dnssec_check(self):
         return self.get_bool("ZONE_TESTS", "ENABLE_ZONE_DNSSEC_CHECK", True)
+
+    # --- SCORING WEIGHTS ---
+    @property
+    def weight_dnssec(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_DNSSEC", 20)
+    @property
+    def weight_cookies(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_COOKIES", 15)
+    @property
+    def weight_edns0(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_EDNS0", 15)
+    @property
+    def weight_restricted(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_RESTRICTED", 15)
+    @property
+    def weight_web_safe(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_WEB_SAFE", 15)
+    @property
+    def weight_port53_u(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_PORT53_U", 10)
+    @property
+    def weight_port53_t(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_PORT53_T", 10)
+
+    @property
+    def weight_dot(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_DOT", 25)
+    @property
+    def weight_doh(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_DOH", 25)
+    @property
+    def weight_qname_min(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_QNAME_MIN", 25)
+    @property
+    def weight_ecs_masking(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ECS_MASKING", 25)
+
+    @property
+    def weight_zone_sync(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ZONE_SYNC", 30)
+    @property
+    def weight_zone_aa(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ZONE_AA", 20)
+    @property
+    def weight_zone_no_axfr(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ZONE_NO_AXFR", 20)
+    @property
+    def weight_zone_caa(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ZONE_CAA", 15)
+    @property
+    def weight_zone_dnssec(self): return self.get_int("SCORING_WEIGHTS", "WEIGHT_ZONE_DNSSEC", 15)
+
+    # --- AUDIT THRESHOLD ---
+    @property
+    def ttl_min_threshold(self): return self.get_int("AUDIT_THRESHOLD", "TTL_MIN_THRESHOLD", 60)
+    @property
+    def ttl_max_threshold(self): return self.get_int("AUDIT_THRESHOLD", "TTL_MAX_THRESHOLD", 172800)
+    @property
+    def spf_lookup_limit(self): return self.get_int("AUDIT_THRESHOLD", "SPF_LOOKUP_LIMIT", 10)
 
     # --- CONSISTENCY ---
     @property

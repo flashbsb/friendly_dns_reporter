@@ -1,6 +1,6 @@
 import re
 
-def validate_spf(spf_records):
+def validate_spf(spf_records, lookup_limit=10):
     """Heuristic SPF validation for common pitfalls."""
     issues = []
     if not spf_records:
@@ -35,8 +35,8 @@ def validate_spf(spf_records):
     lookups += len(re.findall(r'(?<![A-Za-z0-9_])exists:', normalized))
     lookups += len(re.findall(r'(?<![A-Za-z0-9_])redirect=', normalized))
         
-    if lookups > 10:
-        issues.append(f"Heuristic SPF warning: high number of DNS lookups ({lookups}), likely exceeds RFC 10-lookup limit")
+    if lookups > lookup_limit:
+        issues.append(f"Heuristic SPF warning: high number of DNS lookups ({lookups}), likely exceeds limit ({lookup_limit})")
         
     return len(issues) == 0, issues
 
@@ -63,14 +63,14 @@ def validate_dmarc(dmarc_records):
         
     return len(issues) == 0, issues
 
-def analyze_ttl(ttl):
+def analyze_ttl(ttl, min_val=60, max_val=172800):
     """Heuristic TTL analysis based on common operational practice."""
     # Best practices:
     # Low: < 300s (5m) -> High load
     # High: > 86400s (24h) -> Hard to migrate
     
-    if ttl < 60:
+    if ttl < min_val:
         return False, f"Heuristic TTL warning: TTL extremely low ({ttl}s) - may increase DNS load"
-    if ttl > 172800: # 48h
+    if ttl > max_val:
         return False, f"Heuristic TTL warning: TTL extremely high ({ttl}s) - may slow migrations"
     return True, "OK"

@@ -207,7 +207,7 @@ def print_phase_header(name):
         print(f"  {'Domain':28} | {'Group':11} | {'Server':15} | {'Type':5} | {'Status':12} | {'Lat':7} | Sync")
         print("-" * 113)
 
-def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=True, security_available=True, privacy_available=True, takeaways=None):
+def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None):
     print("\n" + "=" * 80)
     print(f"{BOLD}FINAL DIAGNOSTIC SUMMARY{RESET}")
     print("=" * 80)
@@ -228,22 +228,23 @@ def print_summary_table(total, success, fail, div, sync_issues, reports, duratio
 
     if security_available:
         print(f"  {BOLD}SECURITY SCORE      : {_score_clr(sec_score)}{sec_score}/100{RESET}")
-    else:
+    elif show_security: # Only show 'N/A' if we actually WANT to see security scores
         print(f"  {BOLD}SECURITY SCORE      : {WARN}N/A{RESET}")
 
     if privacy_available:
         print(f"  {BOLD}PRIVACY SCORE       : {_score_clr(priv_score)}{priv_score}/100{RESET}")
-    else:
+    elif show_privacy: # Only show 'N/A' if we actually WANT to see privacy scores
         print(f"  {BOLD}PRIVACY SCORE       : {WARN}N/A (no recursive-profile servers){RESET}")
 
-    if scores_available:
-        avg_score = (sec_score + priv_score) / 2
-        print(f"  {BOLD}GLOBAL HEALTH GRADE : {format_grade(avg_score)} ({avg_score:.1f}%){RESET}")
-    else:
-        if security_available:
-            print(f"  {BOLD}GLOBAL HEALTH GRADE : {format_grade(sec_score)} ({sec_score:.1f}% security-only){RESET}")
+    if show_security or show_privacy:
+        if scores_available:
+            avg_score = (sec_score + priv_score) / 2
+            print(f"  {BOLD}GLOBAL HEALTH GRADE : {format_grade(avg_score)} ({avg_score:.1f}%){RESET}")
         else:
-            print(f"  {BOLD}GLOBAL HEALTH GRADE : {WARN}N/A (requires Phase 1 data){RESET}")
+            if security_available:
+                print(f"  {BOLD}GLOBAL HEALTH GRADE : {format_grade(sec_score)} ({sec_score:.1f}% security-only){RESET}")
+            else:
+                print(f"  {BOLD}GLOBAL HEALTH GRADE : {WARN}N/A (requires Phase 1 data){RESET}")
     
     print(f"  {BOLD}TOTAL EXECUTION TIME: {duration:.2f}s{RESET}")
 

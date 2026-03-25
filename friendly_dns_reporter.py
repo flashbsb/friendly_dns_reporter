@@ -270,18 +270,25 @@ def _run_repeated_query(query_fn, repeats, success_statuses=None):
 
 def _query_log_payload(query_result, include_full_response=False):
     payload = {
-        "status": query_result.get("status"),
-        "latency_ms": round(query_result.get("latency", 0), 2),
-        "flags": query_result.get("flags", []),
-        "aa": query_result.get("aa"),
-        "tc": query_result.get("tc"),
-        "ttl": query_result.get("ttl"),
-        "answers": query_result.get("answers", []),
-        "authority": query_result.get("authority", []),
-        "nsid": query_result.get("nsid"),
+        "status": query_result.status,
+        "latency_ms": round(query_result.latency or 0, 2),
+        "flags": query_result.flags,
+        "aa": query_result.aa,
+        "tc": query_result.tc,
+        "rd": query_result.rd,
+        "ra": query_result.ra,
+        "ad": query_result.ad,
+        "cd": query_result.cd,
+        "ttl": query_result.ttl,
+        "answers": query_result.answers,
+        "authority": query_result.authority,
+        "additional": query_result.additional,
+        "nsid": query_result.nsid,
+        "query_size": query_result.query_size,
+        "response_size": query_result.response_size
     }
     if include_full_response:
-        payload["full_response"] = _truncate_for_log(query_result.get("full_response", ""), 1200)
+        payload["full_response"] = _truncate_for_log(query_result.full_response, 1200)
     return payload
 
 # Setup Logging
@@ -727,10 +734,12 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                  res["cookies_lat"] = None
 
             if settings.enable_web_risk_check:
-                wr_res = dns_engine.check_web_risk(srv) # WR is a special response
-                res["web_risks"] = wr_res.get("ports", [])
-                res["web_risk_timings"] = wr_res.get("timings", {})
-                res["web_risk_lat"] = wr_res.get("latency")
+                wr_risks, wr_timings = dns_engine.check_web_risk(srv)
+                res["web_risks"] = wr_risks
+                res["web_risk_timings"] = wr_timings
+                # Calculate a rough latency for web risk check if needed, though it's multi-port
+                valid_web_times = [t for t in wr_timings.values() if t is not None]
+                res["web_risk_lat"] = max(valid_web_times) if valid_web_times else None
             else:
                 res["web_risks"] = []
                 res["web_risk_lat"] = None
@@ -752,7 +761,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
         
     # Calculate individual scores
     for srv in infra_results:
-        infra_results[srv]['infrastructure_score'] = calculate_server_score(infra_results[srv])
+        infra_results[srv]['infrastructure_score'] = calculate_server_score(infra_results[srv], settings)
 
     # Phase 1 summary counters are needed by the terminal snapshot and analytics.
     alive = sum(1 for r in infra_results.values() if not r['is_dead'])
@@ -1253,7 +1262,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         
     # Calculate individual scores
     for r in zone_results:
-        r['zone_score'] = calculate_zone_score(r)
+        r['zone_score'] = calculate_zone_score(r, settings)
 
     # Final sorted print
     ui.print_phase_snapshot(
@@ -1509,19 +1518,19 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                     findings.append("Truncated response (TC bit set) - Suggests Large Packets/MTU issues")
                 
                 # 1. TTL Analysis (Using first answer's TTL as representative)
-                # Note: DNSResponse has min_ttl if we implement it, currently uses first rset TTL
-                first_ttl = 0
-                if main_q.answers:
-                     # This is a bit simplified, usually ttl is part of the rdata in some libs, 
-                     # but here we assume the engine provides it or we derive it.
-                     pass 
+                if main_q.ttl > 0:
+                     _, ttl_msg = validators.analyze_ttl(main_q.ttl, 
+                                                       min_val=settings.ttl_min_threshold, 
+                                                       max_val=settings.ttl_max_threshold)
+                     if ttl_msg != "OK":
+                         findings.append(ttl_msg)
 
                 # 2. Record Specific Syntax/Chain checks
                 spf_list = [a for a in main_q.answers if rtype == "TXT" and "v=spf1" in a]
                 dmarc_list = [a for a in main_q.answers if rtype == "TXT" and "v=DMARC1" in a]
                 
                 if spf_list:
-                    _, spf_issues = validators.validate_spf(spf_list)
+                    _, spf_issues = validators.validate_spf(spf_list, lookup_limit=settings.spf_lookup_limit)
                     findings.extend(spf_issues)
                     
                 if dmarc_list:
@@ -1542,7 +1551,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                         else:
                             # MX Target Port 25 Check
                             if rtype == "MX":
-                                 mx_ok, mx_port25_latency = dns_engine.check_port_25(target_host)
+                                 mx_ok, mx_port25_latency = dns_engine.check_port_25(target_host, port=settings.smtp_port)
                                  if mx_port25_latency is not None:
                                      mx_port25_latencies.append(mx_port25_latency)
                                  if not mx_ok:
@@ -1681,7 +1690,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
 
     return results, insights
 
-def calculate_server_score_breakdown(res):
+def calculate_server_score_breakdown(res, settings):
     """Return profile-aware total/security/privacy scoring for a server."""
     if res.get('is_dead'):
         return {"total": 0, "security": 0, "privacy": 0, "privacy_applicable": False}
@@ -1692,32 +1701,34 @@ def calculate_server_score_breakdown(res):
     privacy_applicable = profile in {"recursive", "mixed"}
 
     if res.get('dnssec') == "OK":
-        security_raw += 20
+        security_raw += settings.weight_dnssec
     if res.get('cookies') is True:
-        security_raw += 15
+        security_raw += settings.weight_cookies
     if res.get('edns0') == "OK":
-        security_raw += 15
+        security_raw += settings.weight_edns0
     if res.get('resolver_restricted') is True:
-        security_raw += 15
+        security_raw += settings.weight_restricted
     if not res.get('web_risks'):
-        security_raw += 15
+        security_raw += settings.weight_web_safe
 
     if profile == "authoritative":
         if res.get('port53u_serv') == "OK":
-            security_raw += 10
+            security_raw += settings.weight_port53_u
         if res.get('port53t_serv') == "OK":
-            security_raw += 10
+            security_raw += settings.weight_port53_t
         security_score = min(security_raw, 100)
         total_score = security_score
     else:
         if res.get('dot') == "OK":
-            privacy_raw += 25
+            privacy_raw += settings.weight_dot
         if res.get('doh') == "OK":
-            privacy_raw += 25
+            privacy_raw += settings.weight_doh
         if res.get('qname_min') is True:
-            privacy_raw += 25
+            privacy_raw += settings.weight_qname_min
         if res.get('ecs') is False:
-            privacy_raw += 25
+            privacy_raw += settings.weight_ecs_masking
+        
+        # Security score for recursives is normalized against 80 (since port53_u/t aren't added)
         security_score = int((security_raw / 80) * 100)
         privacy_score = min(privacy_raw, 100)
         total_score = int((security_score + privacy_score) / 2)
@@ -1729,29 +1740,29 @@ def calculate_server_score_breakdown(res):
         "privacy_applicable": privacy_applicable
     }
 
-def calculate_server_score(res):
+def calculate_server_score(res, settings):
     """Calculate a 0-100 score for a single server infrastructure."""
-    return calculate_server_score_breakdown(res)["total"]
+    return calculate_server_score_breakdown(res, settings)["total"]
 
-def calculate_zone_score(res):
+def calculate_zone_score(res, settings):
     """Calculate a 0-100 score for a single zone-on-server result."""
     if res.get('status') != "NOERROR": return 0
     
     s = 0
-    # Sync & Identity (50 pts)
-    if res.get('zone_is_synced'): s += 30
-    if res.get('aa'): s += 20
+    # Sync & Identity
+    if res.get('zone_is_synced'): s += settings.weight_zone_sync
+    if res.get('aa'): s += settings.weight_zone_aa
     
-    # Security Policies (50 pts)
-    if not res.get('axfr_vulnerable'): s += 20
-    if len(res.get('caa_records', [])) > 0: s += 15
+    # Security Policies
+    if not res.get('axfr_vulnerable'): s += settings.weight_zone_no_axfr
+    if len(res.get('caa_records', [])) > 0: s += settings.weight_zone_caa
     
     audit = res.get('zone_audit', {})
-    if audit.get('dnssec'): s += 15
+    if audit.get('dnssec'): s += settings.weight_zone_dnssec
     
     return s
 
-def calculate_scores(infra_results, zone_results):
+def calculate_scores(infra_results, zone_results, settings):
     """Calculate aggregated Security and Privacy scores for global summary."""
     if not infra_results:
         return None, None
@@ -1762,7 +1773,7 @@ def calculate_scores(infra_results, zone_results):
     priv_count = 0
     
     for srv, res in infra_results.items():
-        breakdown = calculate_server_score_breakdown(res)
+        breakdown = calculate_server_score_breakdown(res, settings)
 
         security_score = breakdown["security"]
         vuln_axfr = any(z['axfr_vulnerable'] for z in zone_results if z['server'] == srv)
@@ -1931,7 +1942,7 @@ def main():
         results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
 
     # Final Analytics Calculation
-    sec_score, priv_score = calculate_scores(infra_cache, zone_results)
+    sec_score, priv_score = calculate_scores(infra_cache, zone_results, settings)
     security_available = sec_score is not None
     privacy_available = priv_score is not None
     scores_available = security_available and privacy_available
@@ -1946,8 +1957,8 @@ def main():
     )
     final_summary = {
         "total_queries": len(results),
-        "success_queries": sum(1 for r in results if r['status'] == "NOERROR"),
-        "divergences": sum(1 for r in results if r['internally_consistent'] == "DIV!"),
+        "success_queries": sum(1 for r in results if r.get('status') == "NOERROR"),
+        "divergences": sum(1 for r in results if r.get('internally_consistent') == "DIV!"),
         "zone_sync_issues": len({
             z["domain"] for z in zone_results
             if z.get("status") != "NOERROR" or z.get("zone_is_synced") is False
@@ -2060,14 +2071,14 @@ def main():
     
     total = len(results)
     success = sum(1 for r in results if r['status'] == "NOERROR")
-    div = sum(1 for r in results if r['internally_consistent'] == "DIV!")
+    div = sum(1 for r in results if r.get('internally_consistent') == "DIV!")
     sync_issues = len({
         z["domain"] for z in zone_results
         if z.get("status") != "NOERROR" or z.get("zone_is_synced") is False
     })
     script_duration = time.time() - script_start_time
     
-    sec_score, priv_score = calculate_scores(infra_cache, zone_results)
+    sec_score, priv_score = calculate_scores(infra_cache, zone_results, settings)
     security_available = sec_score is not None
     privacy_available = priv_score is not None
     scores_available = security_available and privacy_available
@@ -2107,6 +2118,8 @@ def main():
         scores_available=scores_available,
         security_available=security_available,
         privacy_available=privacy_available,
+        show_security=settings.enable_security_score,
+        show_privacy=settings.enable_privacy_score,
         takeaways=takeaways
     )
 

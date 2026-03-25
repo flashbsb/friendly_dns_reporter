@@ -1,4 +1,4 @@
-﻿# FriendlyDNSReporter
+# FriendlyDNSReporter
 > *Because it is always DNS. Or not. But mostly yes.*
 
 [![Python](https://img.shields.io/badge/Language-Python-3776AB.svg)](https://www.python.org/)
@@ -112,7 +112,7 @@ python friendly_dns_reporter.py
 
 ```bash
 # Run only Phase 1 (Infrastructure) and Phase 3 (Records)
-python friendly_dns_reporter.py -p 1,3
+python friendly_dns_reporter.py --phases 1,3
 
 # Use custom datasets
 python friendly_dns_reporter.py -n my_domains.csv -g my_groups.csv
@@ -121,31 +121,41 @@ python friendly_dns_reporter.py -n my_domains.csv -g my_groups.csv
 python friendly_dns_reporter.py -o reports
 
 # Run only the Zone phase
-python friendly_dns_reporter.py -p 2
+python friendly_dns_reporter.py --phases 2
 ```
 
 ### Command Flags
 
 | Flag | Description |
 |------|-------------|
-| `-p` | Select phases to run (for example `1`, `1,3`, `2`). Default: all enabled phases. |
-| `-n` | Path to the domains CSV. Default: `config/domains.csv`. |
-| `-g` | Path to the groups CSV. Default: `config/groups.csv`. |
-| `-o` | Output directory for generated reports. |
+| `--phases` | Select phases to run (for example `1`, `1,2,3`). Default: configured in `settings.ini`. |
+| `-n`, `--domains` | Path to the domains CSV. Default: `config/domains.csv`. |
+| `-g`, `--groups` | Path to the groups CSV. Default: `config/groups.csv`. |
+| `-o`, `--output` | Output directory for generated reports. |
 | `--install-missing-deps` | Explicitly allow automatic installation of missing Python dependencies. |
-| `-h` | Show command help. |
+| `-h`, `--help` | Show command help. |
 
-Parallelism, consistency count, timeouts, scoring options, and feature toggles are configured in `config/settings.ini`.
+Parallelism, consistency count, timeouts, scoring weights, and feature toggles are centralized in `config/settings.ini`.
 
 ## Configuration
 
-The `config/settings.ini` file centralizes runtime behavior:
+The `config/settings.ini` file gives you full control over the diagnostic engine:
 
-- `ENABLE_PHASE_*`: toggle Infrastructure, Zone, or Record phases.
-- `MAX_THREADS`: parallelism limit.
-- `DNS_TIMEOUT` / `DNS_RETRIES`: DNS engine behavior.
-- `STRICT_*_CHECK`: record consistency tolerance for IPs, order, and TTL.
-- `ENABLE_*_REPORT`: control JSON, HTML, TXT, CSV, and related outputs.
+- **[GENERAL]**: `MAX_THREADS`, `WATCHDOG_INTERVAL`, and default file paths.
+- **[REPORTS]**: Toggles for HTML, JSON, CSV, and TXT exports. Enable `ENABLE_SECURITY_SCORE` and `ENABLE_PRIVACY_SCORE` for forensic analysis.
+- **[DNS_ENGINE]**: `DNS_TIMEOUT`, `DNS_RETRIES`, and `DOH_VERIFY_SSL` for engine tuning.
+- **[SCORING_WEIGHTS]**: Customize the impact of DNSSEC, DoH, DoT, QNAME Minimization, and more on final health scores.
+- **[AUDIT_THRESHOLD]**: Define heuristic limits for TTL and SPF lookups.
+- **[CONSISTENCY]**: Configure Phase 3 depth and latency warnings (`REC_LATENCY_WARN`, `REC_LATENCY_CRIT`).
+
+## Forensic Scoring System
+
+The tool calculates two primary health indices:
+
+1.  **Security Score**: Evaluates encryption (DoH/DoT), DNSSEC, Cookies, and port exposure (Web Risk).
+2.  **Privacy Score**: Evaluates protocol masking (DoH/DoT), QNAME Minimization, and ECS masking.
+
+Scores are aggregated across all tested servers and converted into an executive **Letter Grade (A+ to F)**.
 
 ## Reports
 
