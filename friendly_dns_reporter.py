@@ -397,11 +397,11 @@ def compare_consistency(queries, settings):
     
     def _get_key(q):
         # Build comparison tuple based on strictness
-        ans = [_normalize_answer(a) for a in q.get('answers', [])]
+        ans = [_normalize_answer(a) for a in q.answers]
         if not settings.strict_order_check:
             ans = sorted(ans)
         
-        ttl = q.get("ttl", 0) if settings.strict_ttl_check else None
+        ttl = q.ttl if settings.strict_ttl_check else None
         return tuple(ans), ttl
 
     base_key = _get_key(queries[0])
