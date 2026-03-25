@@ -484,6 +484,14 @@
             return `${label}=${sampleCount}x ${stableLabel} [${minLatency}/${avgLatency}/${maxLatency}] j=${jitter}`;
         },
 
+        fmtAmplification(q, r) {
+            if (q && r) {
+                const ratio = (r / q).toFixed(1);
+                return `${ratio}x (${q}B -> ${r}B)`;
+            }
+            return 'N/A';
+        },
+
         renderAll() {
             this.renderHero();
             this.renderGlobal();
@@ -850,6 +858,7 @@
                     Obs UDP53/TCP53/ECS/QNAME/Cookies: ${this.highlight(`${d.udp53_probe_timing_source || '-'}:${d.udp53_probe_failure_reason || '-'} / ${d.tcp53_probe_timing_source || '-'}:${d.tcp53_probe_failure_reason || '-'} / ${d.ecs_timing_source || '-'}:${d.ecs_failure_reason || '-'} / ${d.qname_min_timing_source || '-'}:${d.qname_min_failure_reason || '-'} / ${d.cookies_timing_source || '-'}:${d.cookies_failure_reason || '-'}`)} |
                     Web80/Web443: ${this.highlight(`${(d.web_risk_status && d.web_risk_status['80']) || (d.web_risk_status && d.web_risk_status[80]) || '-'} / ${(d.web_risk_status && d.web_risk_status['443']) || (d.web_risk_status && d.web_risk_status[443]) || '-'}`)} |
                     Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'version', 'Version')} / ${this.fmtProbeEvidence(d, 'recursion', 'Recursion')} / ${this.fmtProbeEvidence(d, 'dnssec', 'DNSSEC')} / ${this.fmtProbeEvidence(d, 'edns0', 'EDNS0')} / ${this.fmtProbeEvidence(d, 'open_resolver', 'OpenRes')} / ${this.fmtProbeEvidence(d, 'doh_probe', 'DoH')}`)} |
+                    Telemetry: Amp=${this.fmtAmplification(d.udp53_query_size, d.udp53_response_size)} |
                     Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'udp53_probe', 'UDP53')} / ${this.fmtProbeRepeat(d, 'tcp53_probe', 'TCP53')} / ${this.fmtProbeRepeat(d, 'dot_probe', 'DoT')} / ${this.fmtProbeRepeat(d, 'doh_probe', 'DoH')} / ${this.fmtProbeRepeat(d, 'open_resolver', 'OpenRes')}`)}
                 </td></tr>`;
             });
@@ -907,6 +916,7 @@
                         Timer Issues: ${this.highlight((d.zone_audit && d.zone_audit.timers_issues && d.zone_audit.timers_issues.length) ? d.zone_audit.timers_issues.join(' | ') : 'None')} |
                         CAA Records: ${this.highlight(d.caa_records.join(' | '))} |
                         Timings SOA/Fallback/NS/AXFR/CAA/DNSSEC: ${this.highlight(`${this.fmtLatency(d.soa_latency, 0)} / ${this.fmtLatency(d.soa_fallback_latency, 0)} / ${this.fmtLatency(d.ns_latency, 0)} / ${this.fmtLatency(d.axfr_latency, 0)} / ${this.fmtLatency(d.caa_latency, 0)} / ${this.fmtLatency(d.zone_dnssec_latency, 0)}`)} |
+                        SOA Timers: Ref=${d.soa_timers ? d.soa_timers.refresh : '-'} Ret=${d.soa_timers ? d.soa_timers.retry : '-'} Exp=${d.soa_timers ? d.soa_timers.expire : '-'} Min=${d.soa_timers ? d.soa_timers.min_ttl : '-'} |
                         Scope: ${this.highlight(`${d.scope_confidence || 'N/A'} / fallback:${d.used_fallback ? 'YES' : 'NO'}`)} |
                         Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'soa', 'SOA')} / ${this.fmtProbeEvidence(d, 'ns', 'NS')} / ${this.fmtProbeEvidence(d, 'caa', 'CAA')} / ${this.fmtProbeEvidence(d, 'zone_dnssec', 'ZoneDNSSEC')}`)} |
                         Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'soa', 'SOA')} / ${this.fmtProbeRepeat(d, 'ns', 'NS')}`)}
@@ -919,6 +929,7 @@
                         Zone Audit MNAME Reachability: ${this.highlight((d.zone_audit && d.zone_audit.mname_reachable) || '-')} |
                         Timer Issues: ${this.highlight((d.zone_audit && d.zone_audit.timers_issues && d.zone_audit.timers_issues.length) ? d.zone_audit.timers_issues.join(' | ') : 'None')} |
                         Timings SOA/Fallback/NS/AXFR/CAA/DNSSEC: ${this.highlight(`${this.fmtLatency(d.soa_latency, 0)} / ${this.fmtLatency(d.soa_fallback_latency, 0)} / ${this.fmtLatency(d.ns_latency, 0)} / ${this.fmtLatency(d.axfr_latency, 0)} / ${this.fmtLatency(d.caa_latency, 0)} / ${this.fmtLatency(d.zone_dnssec_latency, 0)}`)} |
+                        SOA Timers: Ref=${d.soa_timers ? d.soa_timers.refresh : '-'} Ret=${d.soa_timers ? d.soa_timers.retry : '-'} Exp=${d.soa_timers ? d.soa_timers.expire : '-'} Min=${d.soa_timers ? d.soa_timers.min_ttl : '-'} |
                         Scope: ${this.highlight(`${d.scope_confidence || 'N/A'} / fallback:${d.used_fallback ? 'YES' : 'NO'}`)} |
                         Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'soa', 'SOA')} / ${this.fmtProbeEvidence(d, 'ns', 'NS')} / ${this.fmtProbeEvidence(d, 'caa', 'CAA')} / ${this.fmtProbeEvidence(d, 'zone_dnssec', 'ZoneDNSSEC')}`)} |
                         Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'soa', 'SOA')} / ${this.fmtProbeRepeat(d, 'ns', 'NS')}`)}
@@ -969,6 +980,7 @@
                 html += `<tr class="detail-row"><td colspan="13">
                     Answers: ${this.highlight(d.answers || '-')} |
                     Wildcard Answers: ${this.highlight((d.wildcard_answers && d.wildcard_answers.length) ? d.wildcard_answers.join(' | ') : '-')} |
+                    Telemetry: AD Flag: <b>${d.ad ? 'AD+' : 'AD-'}</b> | Amplification: <b>${this.fmtAmplification(d.query_size, d.response_size)}</b> | NSID: ${this.highlight(d.nsid || '-')} |
                     Timings First/Avg/Min/Max: ${this.highlight(`${this.fmtLatency(d.latency_first, 1)} / ${this.fmtLatency(d.latency_avg, 1)} / ${this.fmtLatency(d.latency_min, 1)} / ${this.fmtLatency(d.latency_max, 1)}`)} |
                     Chain/MX25/Wildcard: ${this.highlight(`${this.fmtLatency(d.chain_latency, 1)} / ${this.fmtLatency(d.mx_port25_latency, 1)} / ${this.fmtLatency(d.wildcard_latency, 1)}`)}
                 </td></tr>`;
