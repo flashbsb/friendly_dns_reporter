@@ -221,9 +221,15 @@ class Reporter:
             zone_rows.append(f"  ├─ SOA: {clean(item.get('status'))} | Serial={clean(item.get('serial'))} | Lat={fmt_latency(item.get('latency'))}")
             
             # SOA Timers Table
-            timers = item.get("soa_timers", {})
-            if timers:
+            timers = item.get("soa_timers")
+            if timers and isinstance(timers, dict):
                 t_row = f"  ├─ Timers: Ref={timers.get('refresh')} Ret={timers.get('retry')} Exp={timers.get('expire')} Min={timers.get('min_ttl')}"
+                if audit.get("timers_ok") is False:
+                    t_row += " [!] POLICY RISK"
+                zone_rows.append(t_row)
+            elif timers and isinstance(timers, (list, tuple)) and len(timers) >= 4:
+                # Fallback for old list format
+                t_row = f"  ├─ Timers: Ref={timers[0]} Ret={timers[1]} Exp={timers[2]} Min={timers[3]}"
                 if audit.get("timers_ok") is False:
                     t_row += " [!] POLICY RISK"
                 zone_rows.append(t_row)

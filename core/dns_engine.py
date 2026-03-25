@@ -84,6 +84,13 @@ class DNSEngine:
                         for rr in rrset:
                             authority.append(rr.to_text())
                 
+                # Capture additional section
+                additional = []
+                if response.additional:
+                    for rrset in response.additional:
+                        for rr in rrset:
+                            additional.append(rr.to_text())
+                
                 # Extract NSID if present
                 nsid = None
                 if response.edns == 0:

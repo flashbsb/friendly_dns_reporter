@@ -247,17 +247,17 @@ def _print_boxed_card(title, lines, width=80):
 
 def print_phase_header(name):
     if "1" in name:
-        # Layout: GROUP | IP ADDRESS | Reliability (Ping) | U53 (ms) | T53 (ms) | DoT (ms) | DoH (ms) | Sc | Status
-        print(f"  {INFO}{'GROUP':11}{RESET} | {INFO}{'IP ADDRESS':15}{RESET} | {'RELIABILITY (PING)':20} | {'U53 (ms)':8} | {'T53 (ms)':8} | {'DoT (ms)':8} | {'DoH (ms)':8} | {'Sc':3} | Status")
-        print("-" * 125)
+        # Layout: IP ADDRESS | Reliability (Ping) | U53 (ms) | T53 (ms) | DoT (ms) | DoH (ms) | Sc | Status
+        print(f"  {'IP ADDRESS':15} | {'RELIABILITY (PING)':20} | {'U53 (ms)':8} | {'T53 (ms)':8} | {'DoT (ms)':8} | {'DoH (ms)':8} | {'Sc':3} | Status")
+        print("-" * 111)
     elif "2" in name:
-        # Layout: DOMAIN | GROUP | SERVER | SOA SERIAL | LATENCY | Sc | AA | AXFR
-        print(f"  {INFO}{'DOMAIN':28}{RESET} | {INFO}{'GROUP':11}{RESET} | {INFO}{'SERVER':15}{RESET} | {'SOA SERIAL':16} | {'LATENCY':8} | {'Sc':3} | {'AA':4} | {'AXFR':12}")
-        print("-" * 114)
+        # Layout: SERVER | SOA SERIAL | LATENCY | Sc | AA | AXFR
+        print(f"  {'SERVER':15} | {'SOA SERIAL':16} | {'LATENCY':8} | {'Sc':3} | {'AA':4} | {'AXFR':12}")
+        print("-" * 72)
     elif "3" in name:
-        # Layout: DOMAIN | GROUP | SERVER | TYPE | STATUS | LATENCY | Sync
-        print(f"  {INFO}{'DOMAIN':28}{RESET} | {INFO}{'GROUP':11}{RESET} | {INFO}{'SERVER':15}{RESET} | {'TYPE':5} | {'STATUS':12} | {'LATENCY':8} | Sync")
-        print("-" * 113)
+        # Layout: SERVER | TYPE | STATUS | LATENCY | Sync
+        print(f"  {'SERVER':15} | {'TYPE':5} | {'STATUS':12} | {'LATENCY':8} | Sync")
+        print("-" * 55)
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None, score_breakdown=None):
     width = 80
@@ -340,6 +340,18 @@ def print_interrupt():
     print(" Terminating pending threads... please wait.")
     print("!" * 80 + "\n")
 
+def _get_tree_connector(level, is_last):
+    """Return the correct tree prefix (├─ or └─) based on level and position."""
+    if level <= 0: return ""
+    prefix = "   " * (level - 1)
+    connector = "└─ " if is_last else "├─ "
+    return prefix + connector
+
+def print_tree_node(title, level=0, is_last=False, color=INFO):
+    """Print a tree node header (e.g. [DOMAIN: google.com])."""
+    conn = _get_tree_connector(level, is_last)
+    print(f"  {conn}{color}[{title}]{RESET}")
+
 def _fmt_port_serv(port_status, serv_status, lat):
     """Deep Service notation: OK (Service up), P_ONLY (Port only), CLOSE (Closed)."""
     if port_status == "CLOSED" or port_status == "FAIL":
@@ -356,7 +368,7 @@ def _fmt_soa_timers(timers):
     
     try:
         ref, ret, exp, mn = timers
-        # Simple RFC 1912 compliance coloring (values are stored in engine/audit but here we color the UI)
+        # Simple RFC 1912 compliance coloring
         def _c(val, min_v, max_v):
              try:
                  v = int(val)
@@ -374,7 +386,7 @@ def _fmt_soa_timers(timers):
     except:
         return f"{FAIL}ERROR{RESET}"
 
-def print_infra_detail(srv, data):
+def print_infra_detail(srv, data, level=1, is_last=False):
     ping_loss = data.get('packet_loss', 0.0)
     ping_count = data.get('ping_count', 0)
     lat_warn = data.get('ping_latency_warn', 100)
@@ -410,15 +422,18 @@ def print_infra_detail(srv, data):
 
     # Status
     alive_str = f"{OK}ALIVE{RESET}" if not data['is_dead'] else f"{FAIL}DEAD{RESET}"
-    group_str = _ellipsize(data.get('groups', ''), 11)
     
     # Granular Score
     score = data.get('infrastructure_score', 0)
     score_clr = get_score_color(score)
     score_str = f"{score_clr}{score:3d}{RESET}"
 
-    # Layout: GROUP | IP ADDRESS | Reliability (PING) | U53 | T53 | DoT | DoH | Sc | Status
-    print(f"  {INFO}{group_str:11}{RESET} | {srv:15} | {rel_str:20} | {u53_lat:8} | {t53_lat:8} | {dot_lat:8} | {doh_lat:8} | {score_str} | {alive_str}")
+    # Tree Connector
+    conn = _get_tree_connector(level, is_last)
+    tree_indent = "   " * level
+
+    # Layout: GROUP (Removed) | IP ADDRESS | Reliability (PING) | U53 | T53 | DoT | DoH | Sc | Status
+    print(f"  {conn}{srv:15} | {rel_str:20} | {u53_lat:8} | {t53_lat:8} | {dot_lat:8} | {doh_lat:8} | {score_str} | {alive_str}")
 
     profile = data.get("server_profile", "unknown")
     resolver_class = data.get("classification", "UNKNOWN")
@@ -433,27 +448,31 @@ def print_infra_detail(srv, data):
     qname_min = data.get('qname_min_confidence', 'NONE').upper()
     qname_clr = OK if qname_min in ["HIGH", "MEDIUM"] else (WARN if qname_min == "LOW" else FAIL)
 
+    # Indent sub-lines
+    sub_prefix = "  " + tree_indent + "├─ "
+    last_sub_prefix = "  " + tree_indent + "└─ "
+
     # ├─ Profile/Resolver/Version
-    print(f"        ├─ {BOLD}Profile{RESET}  : {profile:9} | {BOLD}Resolver{RESET}: {resolver_class}/{resolver_conf:7} | {BOLD}Version{RESET}: {version}")
+    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile:9} | {BOLD}Resolver{RESET}: {resolver_class}/{resolver_conf:7} | {BOLD}Version{RESET}: {version}")
     
     # ├─ Transit (Ping/UDP/TCP)
     ping_avg = _fmt_latency(data.get('latency'))
     ping_range = f"[{_fmt_latency(data.get('latency_min'))}..{_fmt_latency(data.get('latency_max'))}]"
     udp53 = _fmt_latency(data.get('udp53_probe_lat'))
     tcp53 = _fmt_latency(data.get('port53t_probe_lat'))
-    print(f"        ├─ {BOLD}Transit{RESET}  : Ping={OK if data.get('ping')=='OK' else FAIL}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
+    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={OK if data.get('ping')=='OK' else FAIL}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
     
     # ├─ Crypto (DoT/DoH)
     dot_status = data.get('dot', 'FAIL')
     doh_status = data.get('doh', 'FAIL')
     dot_full = _fmt_latency(data.get('dot_lat'))
     doh_full = _fmt_latency(data.get('doh_lat'))
-    print(f"        ├─ {BOLD}Crypto{RESET}   : DoT={OK if dot_status=='OK' else FAIL}{dot_full}{RESET} | DoH={OK if doh_status=='OK' else FAIL}{doh_full}{RESET}")
+    print(f"{sub_prefix}{BOLD}Crypto{RESET}   : DoT={OK if dot_status=='OK' else FAIL}{dot_full}{RESET} | DoH={OK if doh_status=='OK' else FAIL}{doh_full}{RESET}")
     
     # └─ Features (Caps/DNSSEC/QNAME)
-    print(f"        └─ {BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={dnssec_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={qname_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
+    print(f"{last_sub_prefix}{BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={dnssec_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={qname_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
 
-def print_zone_detail(srv, domain, res):
+def print_zone_detail(srv, domain, res, level=2, is_last=False):
     serial = res.get('serial', '?')
     status = res.get('status', 'ERROR')
     axfr_ok = res.get('axfr_vulnerable', False)
@@ -506,18 +525,21 @@ def print_zone_detail(srv, domain, res):
     crit_ms = res.get('soa_latency_crit', 1500)
     lat_str = _fmt_latency(lat, 0, warn_ms=warn_ms, crit_ms=crit_ms)
     
-    group_str = _ellipsize(res.get('group', 'UNCATEGORIZED'), 11)
-    
     # Granular Score
     score = res.get('zone_score', 0)
     score_clr = get_score_color(score)
     score_str = f"{score_clr}{score:3d}{RESET}"
 
-    domain_str = _ellipsize(domain, 28)
+    # Tree Connector
+    conn = _get_tree_connector(level, is_last)
+    tree_indent = "   " * level
+
     server_str = _ellipsize(srv, 15)
     serial_out = serial_str if status == "NOERROR" else f"{FAIL}{_compact_status(status, 12):16}{RESET}"
     axfr_out = _ellipsize(axfr_str, 12)
-    print(f"  {domain_str:28} | {INFO}{group_str:11}{RESET} | {server_str:15} | {serial_out:16} | {lat_str:8} | {score_str} | {aa_str} | {axfr_clr}{axfr_out:12}{RESET}")
+    
+    # Layout: DOMAIN (Removed) | GROUP (Removed) | SERVER | SOA SERIAL | LATENCY | Sc | AA | AXFR
+    print(f"  {conn}{server_str:15} | {serial_out:16} | {lat_str:8} | {score_str} | {aa_str} | {axfr_clr}{axfr_out:12}{RESET}")
 
     dnssec = res.get("dnssec")
     dnssec_str = f"{OK}SIGNED{RESET}" if dnssec is True else (f"{FAIL}UNSIGNED{RESET}" if dnssec is False else "N/E")
@@ -532,23 +554,27 @@ def print_zone_detail(srv, domain, res):
     audit_data = res.get("zone_audit", {})
     timer_audit_str = f"{OK}RFC-OK{RESET}" if audit_data.get("timers_ok", True) else f"{FAIL}RFC-FAIL{RESET}"
 
+    # Indent sub-lines
+    sub_prefix = "  " + tree_indent + "├─ "
+    last_sub_prefix = "  " + tree_indent + "└─ "
+
     # ├─ Audit (Scope/DNSSEC/CAA/NS)
-    print(f"        ├─ {BOLD}Audit{RESET}    : Scope={scope_clr}{scope}{RESET} | DNSSEC={dnssec_str} | CAA={caa_str} | NS-Consistent={ns_consistent}")
+    print(f"{sub_prefix}{BOLD}Audit{RESET}    : Scope={scope_clr}{scope}{RESET} | DNSSEC={dnssec_str} | CAA={caa_str} | NS-Consistent={ns_consistent}")
     
     # ├─ Timers (The new comparison table)
     timer_line = _fmt_soa_timers(res.get("soa_timers"))
-    print(f"        ├─ {BOLD}Timers{RESET}   : {timer_line} ({timer_audit_str})")
+    print(f"{sub_prefix}{BOLD}Timers{RESET}   : {timer_line} ({timer_audit_str})")
     
     # ├─ Transit (Ping/SOA/NS/AXFR)
-    ping_lat = _fmt_latency(res.get('latency'))
+    ping_lat = _fmt_latency(res.get('ping_latency'))
     soa_lat_full = _fmt_latency(res.get('soa_latency'))
     ns_lat_full = _fmt_latency(res.get('ns_latency'))
-    print(f"        ├─ {BOLD}Transit{RESET}  : Ping={ping_lat} | SOA: UDP={soa_lat_full} | NS: UDP={ns_lat_full}")
+    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_lat} | SOA: UDP={soa_lat_full} | NS: UDP={ns_lat_full}")
     
     # └─ Evidence (SOA/AXFR/CAA)
     soa_ev = _fmt_probe_evidence(res, 'soa', 'SOA')
     axfr_ev = f"{axfr_clr}{res.get('axfr_detail', 'N/A')}{RESET}"
-    print(f"        └─ {BOLD}Evidence{RESET} : {soa_ev} | AXFR={axfr_ev}")
+    print(f"{last_sub_prefix}{BOLD}Evidence{RESET} : {soa_ev} | AXFR={axfr_ev}")
 
 def print_zone_audit_block(domain, audit):
     """Print a concise summary of advanced zone diagnostics."""
@@ -607,7 +633,7 @@ def print_phase_footer(name, metrics, duration: float = 0.0, insights=None):
         print(f"\n  {INFO}>> Process completed in {duration:.2f}s{RESET}")
     print("  " + "─" * width)
 
-def format_result(target, group, server, rtype, status, latency, is_consistent, warn_ms=150, crit_ms=500, ad=False):
+def format_result(target, group, server, rtype, status, latency, is_consistent, level=3, is_last=False, warn_ms=150, crit_ms=500, ad=False):
     if status == "NOERROR" or status == "NXDOMAIN":
         status_clr = OK
     elif "TIMEOUT" in status or "UNREACHABLE" in status:
@@ -622,11 +648,13 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
     lat_str = _fmt_latency(latency, 1, warn_ms=warn_ms, crit_ms=crit_ms)
     consistency_str = f" [{WARN}DIV!{RESET}]" if not is_consistent else f"{OK}OK{RESET}"
     
-    target_str = _ellipsize(target, 28)
-    group_str = _ellipsize(group, 11)
     server_str = _ellipsize(server, 15)
     
-    return f"  [{INFO}REC{RESET}] {target_str:28} | {INFO}{group_str:11}{RESET} | {server_str:15} | {rtype:5} | {status_clr}{status_str:12}{RESET} | {lat_str:8} | {consistency_str}"
+    # Tree Connector
+    conn = _get_tree_connector(level, is_last)
+    
+    # Layout: TARGET (Removed) | GROUP (Removed) | SERVER | TYPE | STATUS | LATENCY | Sync
+    return f"  {conn}{server_str:15} | {rtype:5} | {status_clr}{status_str:12}{RESET} | {lat_str:8} | {consistency_str}"
 
 def print_record_findings(findings):
     """Print semantic findings/warnings for a specific record."""
@@ -644,7 +672,7 @@ def print_record_findings(findings):
             
         print(f"       {clr}-> {finding}{RESET}")
 
-def print_record_context(record):
+def print_record_context(record, level=3):
     """Print structured diagnostic context for the record."""
     answers = str(record.get("answers", ""))
     if len(answers) > 110:
@@ -663,10 +691,15 @@ def print_record_context(record):
 
     nsid = _ellipsize(record.get("nsid") or "-", 15)
     
-    print(f"      ├─ Transit: Ping={_fmt_latency(record.get('ping_latency'))} | DNS: UDP={_fmt_latency(record.get('latency'))} | Amplification: {amp_str}")
-    print(f"      ├─ Crypto : DoT={_fmt_latency(record.get('dot_latency'))} | DoH={_fmt_latency(record.get('doh_latency'))}")
-    print(f"      ├─ Perf   : Jitter={_fmt_latency(record.get('latency_jitter'))} | Avg={_fmt_latency(record.get('latency_avg'))} | Chain: {chain_str}")
-    print(f"      └─ NSID: {nsid} | Answers: {answers}")
+    # Indent sub-lines
+    tree_indent = "   " * level
+    sub_prefix = "  " + tree_indent + "├─ "
+    last_sub_prefix = "  " + tree_indent + "└─ "
+
+    print(f"{sub_prefix}Transit: Ping={_fmt_latency(record.get('ping_latency'))} | DNS: UDP={_fmt_latency(record.get('latency'))} | Amplification: {amp_str}")
+    print(f"{sub_prefix}Crypto : DoT={_fmt_latency(record.get('dot_latency'))} | DoH={_fmt_latency(record.get('doh_latency'))}")
+    print(f"{sub_prefix}Perf   : Jitter={_fmt_latency(record.get('latency_jitter'))} | Avg={_fmt_latency(record.get('latency_avg'))} | Chain: {chain_str}")
+    print(f"{last_sub_prefix}NSID: {nsid} | Answers: {answers}")
 
 def print_progress(current, total, prefix="", length=30, status_suffix=""):
     """Prints a carriage-return progress bar."""

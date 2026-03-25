@@ -2,6 +2,7 @@ import socket
 import subprocess
 import platform
 import time
+import re
 from icmplib import ping as icmp_ping
 
 class Connectivity:
@@ -36,21 +37,44 @@ class Connectivity:
             return self._system_ping(host, count)
 
     def _system_ping(self, host, count):
-        param = '-n' if platform.system().lower() == 'windows' else '-c'
+        is_windows = platform.system().lower() == 'windows'
+        param = '-n' if is_windows else '-c'
         command = ['ping', param, str(count), host]
         
         try:
-            start_time = time.time()
             output = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True)
-            end_time = time.time()
             
-            # Simple heuristic for success
-            is_alive = "ttl=" in output.lower() or "time=" in output.lower()
+            avg_rtt = None
+            min_rtt = None
+            max_rtt = None
+            packet_loss = 1.0
+            
+            if is_windows:
+                match = re.search(r"Average = (\d+)ms", output)
+                if match: avg_rtt = float(match.group(1))
+                match_min = re.search(r"Minimum = (\d+)ms", output)
+                if match_min: min_rtt = float(match_min.group(1))
+                match_max = re.search(r"Maximum = (\d+)ms", output)
+                if match_max: max_rtt = float(match_max.group(1))
+                
+                loss_match = re.search(r"\((\d+)% loss\)", output)
+                if loss_match: packet_loss = float(loss_match.group(1)) / 100.0
+            else:
+                match = re.search(r"rtt min/avg/max/mdev = ([0-9.]+)/([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
+                if match:
+                    min_rtt = float(match.group(1))
+                    avg_rtt = float(match.group(2))
+                    max_rtt = float(match.group(3))
+                
+                loss_match = re.search(r"(\d+)% packet loss", output)
+                if loss_match: packet_loss = float(loss_match.group(1)) / 100.0
+
+            is_alive = packet_loss < 1.0
             return {
-                "avg_rtt": (end_time - start_time) * 1000 / count if is_alive else None,
-                "min_rtt": None,
-                "max_rtt": None,
-                "packet_loss": 0.0 if is_alive else 1.0,
+                "avg_rtt": avg_rtt,
+                "min_rtt": min_rtt,
+                "max_rtt": max_rtt,
+                "packet_loss": packet_loss,
                 "is_alive": is_alive,
                 "fallback": True
             }

@@ -37,12 +37,64 @@ def _get_missing_dependencies():
             missing_packages.append(pip_name)
     return missing_packages
 
+def _is_venv():
+    """Check if the script is running in a virtual environment."""
+    return (hasattr(sys, 'real_prefix') or 
+            (getattr(sys, 'base_prefix', sys.prefix) != sys.prefix))
+
+def _get_pip_invocation():
+    """Determine how to invoke pip (sys.executable -m pip or pip command)."""
+    # 1. Try python -m pip
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return [sys.executable, "-m", "pip"]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # 2. Try 'pip3'
+    try:
+        subprocess.check_call(["pip3", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return ["pip3"]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # 3. Try 'pip'
+    try:
+        subprocess.check_call(["pip", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return ["pip"]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    return None
+
 def _handle_missing_dependencies(missing_packages, auto_install=False):
     """Prompt or instruct the user about missing dependencies."""
     if not missing_packages:
         return
 
-    install_cmd = f"{sys.executable} -m pip install {' '.join(missing_packages)}"
+    is_venv = _is_venv()
+    user_flag = [] if is_venv else ["--user"]
+    
+    # Try to find a way to run pip
+    pip_base = _get_pip_invocation()
+    
+    if not pip_base:
+        # If pip is missing, try ensurepip to bootstrap it
+        _bootstrap_note("Pip not found. Attempting to bootstrap with ensurepip.")
+        try:
+            subprocess.check_call([sys.executable, "-m", "ensurepip"] + user_flag, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            pip_base = [sys.executable, "-m", "pip"]
+            _bootstrap_note("Pip bootstrapped successfully with ensurepip.")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            _bootstrap_note("ensurepip failed to bootstrap pip.")
+
+    # Format the manual command for display
+    if pip_base:
+        display_cmd = " ".join(pip_base + ["install"] + user_flag + missing_packages)
+    else:
+        # Fallback display command
+        display_cmd = f"{sys.executable} -m pip install {' '.join(user_flag)} {' '.join(missing_packages)}".replace("  ", " ")
+
     _bootstrap_note(f"Missing dependencies detected: {', '.join(missing_packages)}")
     print("[*] Missing dependencies detected:")
     for pkg in missing_packages:
@@ -55,7 +107,7 @@ def _handle_missing_dependencies(missing_packages, auto_install=False):
     elif sys.stdin is None or not sys.stdin.isatty():
         _bootstrap_note("Non-interactive session detected. Automatic installation disabled by default.")
         print("[-] Non-interactive session detected. Automatic installation is disabled by default.")
-        print(f"[-] Install them manually with:\n    {install_cmd}")
+        print(f"[-] Install them manually with:\n    {display_cmd}")
         sys.exit(1)
     else:
         reply = input("[?] Attempt automatic installation now? [y/N]: ").strip().lower()
@@ -64,19 +116,95 @@ def _handle_missing_dependencies(missing_packages, auto_install=False):
     if not should_install:
         _bootstrap_note("Dependency installation canceled by user.")
         print("[-] Dependency installation canceled by user.")
-        print(f"[-] Install them manually with:\n    {install_cmd}")
+        print(f"[-] Install them manually with:\n    {display_cmd}")
+        sys.exit(1)
+
+    if not pip_base:
+        _bootstrap_note("Cannot install dependencies: pip is missing and ensurepip failed.")
+        print("[-] Error: 'pip' is not available and automatic bootstrap failed.")
+        # Specific tip for Debian/Ubuntu
+        if os.path.exists("/etc/debian_version"):
+            print("[-] TIP: On Debian/Ubuntu, run: sudo apt update && sudo apt install python3-pip")
+        print(f"[-] Please install pip manually and then run:\n    {display_cmd}")
         sys.exit(1)
 
     print("[*] Attempting to install missing dependencies automatically...")
-    _bootstrap_note("Attempting automatic installation of missing dependencies.")
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing_packages)
-        _bootstrap_note("Missing dependencies installed successfully.")
-        print("[+] Dependencies installed successfully. Resuming execution...\n")
-    except subprocess.CalledProcessError as e:
-        _bootstrap_note(f"Automatic dependency installation failed: {e}")
-        print(f"[-] Failed to install dependencies automatically. Error: {e}")
-        print(f"[-] Please manually run:\n    {install_cmd}")
+        # Use subprocess.run to capture stderr for PEP 668 detection
+        proc = subprocess.run(
+            pip_base + ["install"] + user_flag + missing_packages,
+            capture_output=True,
+            text=True
+        )
+        if proc.returncode == 0:
+            _bootstrap_note("Missing dependencies installed successfully.")
+            print("[+] Dependencies installed successfully. Resuming execution...\n")
+            return
+        
+        # Check for PEP 668 (externally-managed-environment)
+        stderr = proc.stderr or ""
+        stdout = proc.stdout or ""
+        full_output = stderr + stdout
+        
+        if "externally-managed-environment" in full_output:
+            _bootstrap_note("PEP 668 detected (externally-managed-environment).")
+            print("[-] Error: Your Python environment is externally managed (PEP 668).")
+            print("[!] Modern Linux distributions (Debian/Ubuntu) protect the system Python.")
+            
+            # Suggest the RECOMMENDED (VENV) approach
+            print("\n[#] OPTION A: RECOMMENDED (Professional/Clean)")
+            print("    1. Install virtualenv tools: sudo apt update && sudo apt install python3-venv python3-full")
+            print("    2. Create a venv: python3 -m venv ~/venv")
+            print("    3. Activate it: source ~/venv/bin/activate")
+            print("    4. Install deps: pip install dnspython Jinja2 icmplib")
+            print("    5. Run: python3 ./friendly_dns_reporter.py")
+            
+            # If we're not interactive, we can't ask, but we should suggest the fix
+            if sys.stdin is None or not sys.stdin.isatty():
+                print(f"\n[!] OPTION B: QUICK FIX (Discouraged):\n    {display_cmd} --break-system-packages")
+                sys.exit(1)
+            
+            print("\n[!] OPTION B: QUICK FIX (Fastest, but discouraged):")
+            print("    Attempt installation using '--break-system-packages' in the current environment.")
+
+            print("\n[?] How would you like to proceed?")
+            print("    [A] Follow OPTION A (Professional/Clean - recommended)")
+            print("    [B] Follow OPTION B (Quick Fix - fastest)")
+            print("    [Q] Quit and install manually later")
+            
+            choice = input("\n[>] Select option [A/B/Q] (Default A): ").strip().upper() or 'A'
+            
+            if choice == 'A':
+                 _bootstrap_note("User chose Option A (VENV). Exiting with instructions.")
+                 print("\n[*] Great choice! Please follow the steps listed in OPTION A above to create a clean environment.")
+                 print("[*] After activating the venv and installing deps, run the script again.")
+                 sys.exit(0)
+            elif choice == 'B':
+                print("[*] Attempting installation with '--break-system-packages'...")
+                try:
+                    subprocess.check_call(pip_base + ["install"] + user_flag + ["--break-system-packages"] + missing_packages)
+                    _bootstrap_note("Missing dependencies installed successfully with --break-system-packages.")
+                    print("[+] Dependencies installed successfully. Resuming execution...\n")
+                    return
+                except subprocess.CalledProcessError as e:
+                     _bootstrap_note(f"Installation with --break-system-packages failed: {e}")
+                     print(f"[-] Failed with --break-system-packages. Error: {e}")
+            else:
+                 _bootstrap_note("User chose to quit or invalid option.")
+                 print("[-] Exiting. Please install dependencies manually.")
+                 sys.exit(1)
+        
+        # General failure fallback
+        _bootstrap_note(f"Automatic dependency installation failed: {full_output}")
+        print(f"\n[-] Failed to install dependencies automatically.")
+        if stderr:
+             print(f"[-] Pip Error Details:\n{stderr}")
+        print(f"[-] Please follow OPTION A or B above to fix the environment.")
+        sys.exit(1)
+    except Exception as e:
+        _bootstrap_note(f"Unexpected error during dependency installation: {e}")
+        print(f"[-] Unexpected error during dependency installation: {e}")
+        print(f"[-] Please manually run:\n    {display_cmd}")
         sys.exit(1)
 
 import argparse
@@ -290,6 +418,18 @@ def _query_log_payload(query_result, include_full_response=False):
     if include_full_response:
         payload["full_response"] = _truncate_for_log(query_result.full_response, 1200)
     return payload
+
+def _get_csv_header(data_list):
+    """Collect all unique keys from all dictionaries in a list for CSV header."""
+    if not data_list: return []
+    header = list(data_list[0].keys())
+    header_set = set(header)
+    for d in data_list[1:]:
+        for k in d.keys():
+            if k not in header_set:
+                header.append(k)
+                header_set.add(k)
+    return header
 
 # Setup Logging
 def setup_logging(settings):
@@ -679,7 +819,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             # Advanced Infrastructure Checks
             ds_res = dns_engine.check_dnssec(srv) if settings.enable_dnssec_check else None
             if ds_res:
-                res["dnssec"] = "OK" if ds_res.status == "NOERROR" else "FAIL"
+                res["dnssec"] = "OK" if ds_res.status == "OK" else "FAIL"
                 res["dnssec_lat"] = ds_res.latency
                 _set_probe_observability(res, "dnssec", res["dnssec"], res["dnssec_lat"])
                 _store_query_evidence(res, "dnssec", ds_res)
@@ -688,7 +828,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
             edns_res = dns_engine.check_edns0(srv) if settings.enable_edns_check else None
             if edns_res:
-                res["edns0"] = "OK" if edns_res.status == "NOERROR" else "FAIL"
+                res["edns0"] = "OK" if edns_res.status == "OK" else "FAIL"
                 res["edns0_lat"] = edns_res.latency
                 _set_probe_observability(res, "edns0", res["edns0"], res["edns0_lat"])
                 _store_query_evidence(res, "edns0", edns_res)
@@ -706,7 +846,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             # Privacy & Advanced Protocol Checks
             ecs_res = dns_engine.check_ecs_support(srv) if settings.enable_ecs_check else None
             if ecs_res:
-                res["ecs"] = ecs_res.status == "NOERROR" # Simplified logic
+                res["ecs"] = ecs_res.status == "OK" # Simplified logic
                 res["ecs_lat"] = ecs_res.latency
                 _set_probe_observability(res, "ecs", "OK" if res["ecs"] else "NO", res["ecs_lat"])
             else:
@@ -715,7 +855,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
             if settings.enable_qname_min_check and res["server_profile"] in {"recursive", "mixed"}:
                 qm_res = dns_engine.check_qname_minimization(srv, rd=True)
-                res["qname_min"] = qm_res.status == "NOERROR"
+                res["qname_min"] = qm_res.status == "OK"
                 res["qname_min_lat"] = qm_res.latency
                 res["qname_min_confidence"] = "LOW"
             else:
@@ -726,7 +866,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
             cook_res = dns_engine.check_dns_cookies(srv) if settings.enable_dns_cookies_check else None
             if cook_res:
-                res["cookies"] = cook_res.status == "NOERROR"
+                res["cookies"] = cook_res.status == "OK"
                 res["cookies_lat"] = cook_res.latency
                 _set_probe_observability(res, "cookies", "OK" if res["cookies"] else "NO", res["cookies_lat"])
             else:
@@ -780,9 +920,18 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     )
 
     # Order results by group then by server IP
-    sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', ''), x[0]))
+    sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', 'UNCATEGORIZED'), x[0]))
     ui.print_phase_header("1: Server Infrastructure")
-    for srv, res in sorted_infra:
+    
+    current_group = None
+    for i, (srv, res) in enumerate(sorted_infra):
+        grp = res.get('groups', 'UNCATEGORIZED')
+        if grp != current_group:
+            current_group = grp
+            ui.print_tree_node(f"GROUP: {grp}", level=0)
+        
+        is_last = (i == len(sorted_infra) - 1) or (sorted_infra[i+1][1].get('groups', 'UNCATEGORIZED') != grp)
+        
         if settings.enable_execution_log:
             logging.info(
                 "[PHASE 1] INFRA DETAIL: Server=%s, Score=%s, Ping=%s, UDP=%s, TCP=%s, DoT=%s, DoH=%s, Resolver=%s, Risks=%s",
@@ -796,7 +945,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                 res.get('classification'),
                 res.get('web_risks', []),
             )
-        ui.print_infra_detail(srv, res)
+        ui.print_infra_detail(srv, res, level=1, is_last=is_last)
         
     # Phase Summary
     # Phase 1 Analytics
@@ -1020,7 +1169,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "serial": "N/A", "axfr_vulnerable": False, "axfr_detail": "PH1 FAIL", 
                     "status": "UNREACHABLE", "is_dead": True,
                     "caa_records": [], "web_risks": infra.get("web_risks", []), "dnssec": None,
-                    "latency": None, "ns_list": [], "check_scope": "SKIPPED", "mname": "N/A", "rname": "N/A",
+                    "latency": None, "ping_latency": infra.get("latency"),
+                    "ns_list": [], "check_scope": "SKIPPED", "mname": "N/A", "rname": "N/A",
                     "soa_latency": None, "soa_fallback_latency": None, "ns_latency": None,
                     "axfr_latency": None, "caa_latency": None, "zone_dnssec_latency": None,
                     "scope_confidence": "NONE", "used_fallback": False,
@@ -1029,6 +1179,32 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 continue
 
             try:
+                # Initialize variables to avoid NameError if an exception occurs early
+                soa = None
+                soa_repeat = {"sample_count": 0}
+                ds_res = None
+                is_signed = False
+                zone_dnssec_latency = None
+                ns_q = None
+                ns_repeat = {"sample_count": 0}
+                ns_latency = None
+                ns_list = []
+                axfr_ok = False
+                axfr_msg = "DISABLED"
+                axfr_latency = None
+                caa_res = None
+                caa_recs = []
+                caa_latency = None
+                serial = "?"
+                mname = "N/A"
+                rname = "N/A"
+                timer_parts = []
+                latency = None
+                soa_fallback_latency = None
+                used_fallback = False
+                aa = False
+                risks = infra.get("web_risks", [])
+
                 # Harmonized recursion logic matching Phase 3
                 soa, soa_repeat = _run_repeated_query(lambda: dns_engine.query(srv, domain, "SOA", rd=is_recursive), phase2_repeats, {"NOERROR", "NXDOMAIN"})
                 soa_repeat["status"] = soa.status
@@ -1105,6 +1281,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                         "status": soa.status,
                         "aa": aa,
                         "latency": latency,
+                        "ping_latency": infra.get("latency"),
                         "soa_latency": latency,
                         "soa_fallback_latency": soa_fallback_latency,
                         "ns_latency": None,
@@ -1122,7 +1299,12 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                         "check_scope": "SOA_ONLY",
                         "scope_confidence": "LOW",
                         "used_fallback": used_fallback,
-                        "soa_timers": timer_parts if len(timer_parts) >= 4 else None,
+                        "soa_timers": {
+                            "refresh": timer_parts[0],
+                            "retry": timer_parts[1],
+                            "expire": timer_parts[2],
+                            "min_ttl": timer_parts[3]
+                        } if len(timer_parts) >= 4 else None,
                     }
                     _store_query_evidence(row, "soa", soa)
                     _store_probe_repeat_summary(row, "soa", soa_repeat)
@@ -1157,7 +1339,10 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 serials[srv] = serial
                 if mname != "N/A": mname_target = mname
                 
-                axfr_ok, axfr_msg, axfr_latency = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else (False, "DISABLED", None)
+                axfr_res = dns_engine.check_axfr(srv, domain) if settings.enable_axfr_check else None
+                axfr_ok = axfr_res.status == "VULNERABLE" if axfr_res else False
+                axfr_msg = axfr_res.status if axfr_res else "DISABLED"
+                axfr_latency = axfr_res.latency if axfr_res else None
                 logging.info(f"[PHASE 2] Zone {domain} on {srv}: SOA Serial: {serial}, AXFR: {axfr_ok} ({axfr_msg})")
                 
                 caa_res = dns_engine.validate_caa(srv, domain, rd=is_recursive) if settings.enable_caa_check else None
@@ -1172,7 +1357,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "domain": domain, "server": srv, "group": group_name,
                     "serial": serial, "mname": mname, "rname": rname,
                     "axfr_vulnerable": axfr_ok, "axfr_detail": axfr_msg, "status": soa.status,
-                    "aa": aa, "latency": latency, "ns_list": ns_list,
+                    "aa": aa, "latency": latency, "ping_latency": infra.get("latency"), 
+                    "ns_list": ns_list,
                     "soa_latency": latency, "soa_fallback_latency": soa_fallback_latency,
                     "ns_latency": ns_latency, "axfr_latency": axfr_latency,
                     "caa_latency": caa_latency, "zone_dnssec_latency": zone_dnssec_latency,
@@ -1186,7 +1372,12 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "check_scope": "FULL",
                     "scope_confidence": "MEDIUM" if used_fallback else "HIGH",
                     "used_fallback": used_fallback,
-                    "soa_timers": timer_parts if len(timer_parts) >= 4 else None,
+                    "soa_timers": {
+                        "refresh": timer_parts[0],
+                        "retry": timer_parts[1],
+                        "expire": timer_parts[2],
+                        "min_ttl": timer_parts[3]
+                    } if len(timer_parts) >= 4 else None,
                 }
                 _store_query_evidence(res, "soa", soa)
                 _store_probe_repeat_summary(res, "soa", soa_repeat)
@@ -1201,7 +1392,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "domain": domain, "server": srv, "group": group_name,
                     "serial": "?", "status": f"ERROR: {str(e)}", "axfr_vulnerable": False,
                     "axfr_detail": "ERROR", "caa_records": [], "web_risks": infra.get("web_risks", []),
-                    "dnssec": None, "latency": None, "ns_list": [], "check_scope": "ERROR",
+                    "dnssec": None, "latency": None, "ping_latency": infra.get("latency"),
+                    "ns_list": [], "check_scope": "ERROR",
                     "soa_latency": None, "soa_fallback_latency": None, "ns_latency": None,
                     "axfr_latency": None, "caa_latency": None, "zone_dnssec_latency": None,
                     "mname": "N/A", "rname": "N/A", "scope_confidence": "NONE", "used_fallback": False
@@ -1246,9 +1438,31 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
             r["zone_audit"] = audit
             r["zone_is_synced"] = is_synced
             r["ns_consistent"] = ns_consistent
+            r['zone_score'] = calculate_zone_score(r, settings)
 
         with lock:
             zone_results.extend(local_results)
+            
+            # Print Domain Tree
+            ui.print_tree_node(f"DOMAIN: {domain}", level=0)
+            # Group local results by group_name for the tree
+            results_by_group = {}
+            for r in local_results:
+                grp = r.get('group', 'UNCATEGORIZED')
+                if grp not in results_by_group: results_by_group[grp] = []
+                results_by_group[grp].append(r)
+            
+            sorted_groups = sorted(results_by_group.keys())
+            for i, grp in enumerate(sorted_groups):
+                is_last_grp = (i == len(sorted_groups) - 1)
+                ui.print_tree_node(f"GROUP: {grp}", level=1, is_last=is_last_grp)
+                
+                group_recs = results_by_group[grp]
+                for j, r in enumerate(group_recs):
+                    ui.print_zone_detail(r['server'], domain, r, level=2, is_last=(j == len(group_recs)-1))
+            
+            ui.print_zone_audit_block(domain, audit)
+            
             active_items.pop(domain, None)
             counters['done'] += 1
             ui.print_progress(counters['done'], total, "Checking Zones", status_suffix=watchdog_state["status"])
@@ -1262,11 +1476,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     stop_event.set()
     watcher.join(timeout=settings.watchdog_join_timeout)
         
-    # Calculate individual scores
-    for r in zone_results:
-        r['zone_score'] = calculate_zone_score(r, settings)
-
-    # Final sorted print
+        
     ui.print_phase_snapshot(
         "Phase 2 Snapshot",
         [
@@ -1279,36 +1489,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         interpretation="Focus first on desynchronized domains and any unexpected AXFR exposure."
     )
     ui.print_phase_header("2: Zone Integrity")
-    last_domain = None
-    sorted_zones = sorted(zone_results, key=lambda x: (x['domain'], x['server']))
-    for i, res in enumerate(sorted_zones):
-        # Check for NS inconsistency and Zone Sync per domain (printed once)
-        if res['domain'] != last_domain:
-            if last_domain is not None:
-                # Print audit block for the PREVIOUS domain
-                prev_res = sorted_zones[i-1]
-                ui.print_zone_audit_block(last_domain, prev_res.get('zone_audit', {}))
 
-            last_domain = res['domain']
-            
-        if settings.enable_execution_log:
-            logging.info(
-                "[PHASE 2] ZONE DETAIL: Domain=%s, Server=%s, Score=%s, Status=%s, Scope=%s, Synced=%s, NS-Consistent=%s",
-                res['domain'],
-                res['server'],
-                res.get('zone_score', 0),
-                res.get('status'),
-                res.get('check_scope'),
-                res.get('zone_is_synced'),
-                res.get('ns_consistent'),
-            )
-        ui.print_zone_detail(res['server'], res['domain'], res)
-    
-    # Print audit block for the LAST domain
-    if sorted_zones:
-        last_res = sorted_zones[-1]
-        ui.print_zone_audit_block(last_res['domain'], last_res.get('zone_audit', {}))
-        
     # Phase Summary
     vuln = sum(1 for r in zone_results if r['axfr_vulnerable'])
     lame = sum(1 for r in zone_results if not r.get('aa', True) and r.get('status') == "NOERROR")
@@ -1458,7 +1639,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     total = len(tasks)
     active_items = {}
     
-    def _worker(target, group_name, server, record_types):
+    def _worker(domain_parent, target, group_name, server, record_types):
         task_label = f"{target}@{server}"
         with lock:
             active_items[task_label] = group_name
@@ -1564,7 +1745,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                                      findings.append(f"MX Target {target_host} UNREACHABLE on Port 25 (SMTP)")
 
                 entry = {
-                    "domain": target, "group": group_name, "server": server, "type": rtype,
+                    "domain": target, "domain_parent": domain_parent, "group": group_name, "server": server, "type": rtype,
                     "status": main_q.status, "latency": _status_latency(main_q.status, main_q.latency),
                     "latency_first": _status_latency(main_q.status, main_q.latency),
                     "latency_avg": round(sum(query_latencies) / len(query_latencies), 2) if query_latencies else None,
@@ -1600,7 +1781,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
         except Exception as e:
             logging.exception(f"[PHASE 3] Execution error for {target} @ {server}")
             with lock:
-                results.append({"domain": target, "group": group_name, "server": server, "type": "ERROR", "status": str(e), "latency": None, "is_consistent": False})
+                results.append({"domain": target, "domain_parent": domain_parent, "group": group_name, "server": server, "type": "ERROR", "status": str(e), "latency": None, "is_consistent": False})
                 active_items.pop(task_label, None)
                 counters['done'] += 1
                 ui.print_progress(counters['done'], total, "Record Consistency", status_suffix=watchdog_state["status"])
@@ -1629,7 +1810,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     ui.print_phase_header("3: Record Consistency")
     
     # Sort results
-    sorted_results = sorted(results, key=lambda x: (x['domain'], x['group'], x['server']))
+    sorted_results = sorted(results, key=lambda x: (x.get('domain_parent', ''), x.get('domain', ''), x.get('group', ''), x.get('server', '')))
     
     wildcard_cache = {}
     for r in sorted_results:
@@ -1642,19 +1823,51 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
         else:
             wildcard_cache[current_zone_srv] = (False, [], None)
 
+    current_domain = None
+    current_target = None
+    current_group = None
     reported_wildcards = set()
-    for r in sorted_results:
-        current_zone_srv = (r['domain'], r['server'])
+    
+    for i, r in enumerate(sorted_results):
+        dom = r.get('domain_parent', 'UNKNOWN')
+        target = r.get('domain', 'UNKNOWN')
+        grp = r.get('group', 'UNCATEGORIZED')
+        srv = r.get('server', 'N/A')
+        
+        # 1. Domain Level
+        if dom != current_domain:
+            current_domain = dom
+            ui.print_tree_node(f"DOMAIN: {dom}", level=0)
+            current_target = None
+            
+        # 2. Record (Target) Level
+        if target != current_target:
+            current_target = target
+            is_last_target = (i == len(sorted_results)-1) or (sorted_results[i+1].get('domain_parent') != dom)
+            ui.print_tree_node(f"REC: {target}", level=1, is_last=is_last_target)
+            current_group = None
+            
+        # 3. Group Level
+        if grp != current_group:
+            current_group = grp
+            is_last_grp = (i == len(sorted_results)-1) or (sorted_results[i+1].get('domain') != target)
+            ui.print_tree_node(f"GROUP: {grp}", level=2, is_last=is_last_grp)
+
+        # 4. Server Level
+        is_last_srv = (i == len(sorted_results)-1) or (sorted_results[i+1].get('group') != grp)
+        
+        current_zone_srv = (target, srv)
         has_wc, wc_ans, wc_latency = wildcard_cache.get(current_zone_srv, (False, [], None))
         r["wildcard_detected"] = has_wc
         r["wildcard_answers"] = wc_ans or []
         r["wildcard_latency"] = wc_latency
 
         print(ui.format_result(
-            r['domain'], r['group'], r['server'], r['type'], r['status'], r['latency'], r['is_consistent'],
+            target, grp, srv, r['type'], r['status'], r['latency'], r['is_consistent'],
+            level=3, is_last=is_last_srv,
             warn_ms=settings.rec_latency_warn, crit_ms=settings.rec_latency_crit, ad=r.get('ad', False)
         ))
-        ui.print_record_context(r)
+        ui.print_record_context(r, level=3)
         
         # Print semantic findings
         if r.get('findings'):
@@ -1976,13 +2189,24 @@ def main():
         tasks = []
         for entry in domains_raw:
             groups = (entry.get('GROUPS') or '').split(',')
-            target = entry.get('DOMAIN')
-            if target:
+            domain = entry.get('DOMAIN')
+            if not domain: continue
+            
+            # Base domain + EXTRA subdomains
+            targets = [domain]
+            extra = entry.get('EXTRA')
+            if extra:
+                for prefix in extra.split(','):
+                    p = prefix.strip()
+                    if p: targets.append(f"{p}.{domain}")
+            
+            records = (entry.get('RECORDS') or '').split(',')
+            for target in targets:
                 for group in groups:
                     group = group.strip().upper()
                     if group in dns_groups:
                         for server in dns_groups[group]["servers"]:
-                            tasks.append((target, group, server, (entry.get('RECORDS') or '').split(',')))
+                            tasks.append((domain, target, group, server, records))
         results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
 
     # Final Analytics Calculation
@@ -2091,7 +2315,7 @@ def main():
             row.update(data)
             infra_list.append(row)
         if infra_list:
-            paths["CSV_INFRA"] = reporter.export_csv(infra_list, f"details_phase1_infrastructure{suffix}.csv", list(infra_list[0].keys()))
+            paths["CSV_INFRA"] = reporter.export_csv(infra_list, f"details_phase1_infrastructure{suffix}.csv", _get_csv_header(infra_list))
             
         # 2. Details Phase 2 (Zones)
         if zone_results:
@@ -2102,17 +2326,17 @@ def main():
                 audit = row.pop('zone_audit', {})
                 for k, v in audit.items(): row[f"audit_{k}"] = v
                 zone_csv_data.append(row)
-            paths["CSV_ZONES"] = reporter.export_csv(zone_csv_data, f"details_phase2_zones{suffix}.csv", list(zone_csv_data[0].keys()))
+            paths["CSV_ZONES"] = reporter.export_csv(zone_csv_data, f"details_phase2_zones{suffix}.csv", _get_csv_header(zone_csv_data))
 
         # 3. Details Phase 3 (Records)
         if results:
-            paths["CSV_RECORDS"] = reporter.export_csv(results, f"details_phase3_records{suffix}.csv", list(results[0].keys()))
+            paths["CSV_RECORDS"] = reporter.export_csv(results, f"details_phase3_records{suffix}.csv", _get_csv_header(results))
 
         # 4-7. Summaries
-        if p1_insights: paths["CSV_SUM_P1"] = reporter.export_csv([p1_insights], f"summary_phase1{suffix}.csv", list(p1_insights.keys()))
-        if p2_insights: paths["CSV_SUM_P2"] = reporter.export_csv([p2_insights], f"summary_phase2{suffix}.csv", list(p2_insights.keys()))
-        if p3_insights: paths["CSV_SUM_P3"] = reporter.export_csv([p3_insights], f"summary_phase3{suffix}.csv", list(p3_insights.keys()))
-        paths["CSV_SUM_FINAL"] = reporter.export_csv([final_summary], f"summary_final{suffix}.csv", list(final_summary.keys()))
+        if p1_insights: paths["CSV_SUM_P1"] = reporter.export_csv([p1_insights], f"summary_phase1{suffix}.csv", _get_csv_header([p1_insights]))
+        if p2_insights: paths["CSV_SUM_P2"] = reporter.export_csv([p2_insights], f"summary_phase2{suffix}.csv", _get_csv_header([p2_insights]))
+        if p3_insights: paths["CSV_SUM_P3"] = reporter.export_csv([p3_insights], f"summary_phase3{suffix}.csv", _get_csv_header([p3_insights]))
+        paths["CSV_SUM_FINAL"] = reporter.export_csv([final_summary], f"summary_final{suffix}.csv", _get_csv_header([final_summary]))
 
     if settings.enable_html_report: 
         # Scan for existing JSON reports in the same directory for history visualization
