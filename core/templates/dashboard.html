@@ -676,8 +676,11 @@
         renderRadar() {
             const { filtered, active } = this.getFilterContext();
             const infra = filtered.infrastructure;
+            const analytics = dataManager.current.analytics || {};
+            const takeaways = analytics.takeaways || [];
+            const breakdown = analytics.score_breakdown || {};
             
-            const cards = [
+            const radarCards = [
                 {
                     kind: 'danger',
                     label: this.help('Open Resolver', 'Open Resolver', 'A server appears as an open resolver when it answers a third-party recursive request from the public internet.'),
@@ -704,20 +707,45 @@
                 }
             ];
 
-            if (active && cards.every(card => card.value === 0)) {
-                document.getElementById('incident-radar').innerHTML = `<div class="chart-empty" style="grid-column:1 / -1">No priority incidents match the active filter.</div>`;
-                return;
+            let html = '';
+            
+            // Execute Takeaways (Terminal Parity)
+            if (takeaways.length > 0) {
+                html += `
+                <div style="grid-column: 1 / -1; margin-bottom: 8px;">
+                    <div class="section-label">Executive Takeaways</div>
+                    <div style="background: rgba(251,113,133,0.06); border: 1px solid rgba(251,113,133,0.15); border-radius: 12px; padding: 12px;">
+                        ${takeaways.map(t => `<div style="font-size: 13px; color: var(--text-primary); margin-bottom: 6px; display: flex; gap: 8px;"><span style="color:var(--warning)">!</span> ${this.highlight(t)}</div>`).join('')}
+                    </div>
+                </div>`;
             }
 
-            document.getElementById('incident-radar').innerHTML = cards.map(card => {
-                const cls = card.value > 0 ? card.kind : 'safe';
-                return `
-                    <div class="incident-card ${cls}">
-                        <div class="count">${card.value}</div>
-                        <div class="name">${card.label}</div>
-                        <div class="desc">${card.desc}</div>
-                    </div>`;
-            }).join('');
+            // Scoring Breakdown
+            if (breakdown && breakdown.length > 0) {
+                 html += `
+                <div style="grid-column: 1 / -1; margin-bottom: 8px;">
+                    <div class="section-label">Scoring Breakdown</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 12px;">
+                        ${breakdown.map(item => `<div style="font-size: 11px; color:var(--text-secondary)">${this.highlight(item)}</div>`).join('')}
+                    </div>
+                </div>`;
+            }
+
+            if (active && radarCards.every(card => card.value === 0)) {
+                html += `<div class="chart-empty" style="grid-column:1 / -1">No priority incidents match the active filter.</div>`;
+            } else {
+                html += radarCards.map(card => {
+                    const cls = card.value > 0 ? card.kind : 'safe';
+                    return `
+                        <div class="incident-card ${cls}">
+                            <div class="count">${card.count !== undefined ? card.count : card.value}</div>
+                            <div class="name">${card.label}</div>
+                            <div class="desc">${card.desc}</div>
+                        </div>`;
+                }).join('');
+            }
+            
+            document.getElementById('incident-radar').innerHTML = html;
         },
 
         renderActionSummary() {

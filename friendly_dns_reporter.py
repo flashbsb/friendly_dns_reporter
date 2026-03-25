@@ -2021,6 +2021,9 @@ def main():
     import platform
     reporter = Reporter(args.output)
     
+    # Prepare terminal-style takeaways and breakdown early for reporting
+    takeaways = build_terminal_takeaways(infra_cache, zone_results, results, security_available, privacy_available)
+    
     report_data = {
         "metadata": {
             "version": VERSION,
@@ -2041,7 +2044,27 @@ def main():
         "analytics": {
             "phase1_infrastructure": p1_insights,
             "phase2_zones": p2_insights,
-            "phase3_records": p3_insights
+            "phase3_records": p3_insights,
+            "score_breakdown": score_breakdown,
+            "takeaways": takeaways
+        },
+        "snapshots": {
+            "phase1": [
+                ("Servers", len(all_servers)),
+                ("Alive", sum(1 for s in infra_cache.values() if not s.get('is_dead'))),
+                ("Dead", sum(1 for s in infra_cache.values() if s.get('is_dead')))
+            ],
+            "phase2": [
+                ("Domains", len(domains_raw)),
+                ("Successful", sum(1 for z in zone_results if z.get('status') == "NOERROR")),
+                ("Desync/Fail", len([z for z in zone_results if z.get('status') != "NOERROR" or z.get('zone_is_synced') is False]))
+            ],
+            "phase3": [
+                ("Queries", len(results)),
+                ("Successful", sum(1 for r in results if r.get('status') == "NOERROR")),
+                ("Divergent", sum(1 for r in results if r.get("internally_consistent") == "DIV!")),
+                ("Findings", sum(1 for r in results if r.get("findings")))
+            ]
         },
         "detailed_results": {
             "infrastructure": infra_cache, 
@@ -2136,7 +2159,7 @@ def main():
         if avg_score is not None else "N/A"
     )
     
-    takeaways = build_terminal_takeaways(infra_cache, zone_results, results, security_available, privacy_available)
+    # (Takeaways already calculated above for report_data)
 
     if settings.enable_execution_log:
         score_display = f"{avg_score:.1f}%" if scores_available else "N/A"

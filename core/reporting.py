@@ -74,6 +74,7 @@ class Reporter:
         summary = report_data.get("summary", {})
         metadata = report_data.get("metadata", {})
         analytics = report_data.get("analytics", {})
+        snapshots = report_data.get("snapshots", {})
         details = report_data.get("detailed_results", {})
         infra = details.get("infrastructure", {})
         zones = details.get("zones", [])
@@ -142,6 +143,14 @@ class Reporter:
             stable_str = "stable" if stable is True else ("flap" if stable is False else "n/e")
             return f"{label}={sample_count}x {stable_str} [{min_lat}/{avg_lat}/{max_lat}] j={jitter}"
 
+        def fmt_insights(ins_dict):
+            if not ins_dict: return []
+            return [f"  [i] {k:25}: {clean(v)}" for k, v in ins_dict.items()]
+
+        def fmt_snapshot(snap_list):
+            if not snap_list: return ""
+            return " | ".join([f"{k}: {v}" for k, v in snap_list])
+
         lines = [
             "FRIENDLY DNS REPORTER",
             "=" * 80,
@@ -151,16 +160,40 @@ class Reporter:
         ]
 
         # Executive Snapshot
-        add_section("Executive Snapshot", [
+        snapshot_rows = [
             f"├─ Grade: {clean(summary.get('global_grade', 'N/A'))}",
             f"├─ Security: {clean(summary.get('security_score', 'N/A'))}",
             f"├─ Privacy: {clean(summary.get('privacy_score', 'N/A'))}",
             f"├─ Response Health: {clean(summary.get('success_queries', 0))}/{clean(summary.get('total_queries', 0))} OK",
             f"└─ Risk Signals: {clean(summary.get('zone_sync_issues', 0))} Desync, {clean(summary.get('divergences', 0))} Div!",
-        ])
+        ]
+        
+        takeaways = analytics.get("takeaways", [])
+        if takeaways:
+            snapshot_rows.append("\n[ EXECUTIVE TAKEAWAYS ]")
+            snapshot_rows.append("-" * 30)
+            for t in takeaways:
+                snapshot_rows.append(f" {clean(t)}")
+        
+        breakdown = analytics.get("score_breakdown", [])
+        if breakdown:
+            snapshot_rows.append("\n[ SCORING BREAKDOWN ]")
+            snapshot_rows.append("-" * 30)
+            for item in breakdown:
+                snapshot_rows.append(f" {clean(item)}")
+
+        add_section("Executive Snapshot", snapshot_rows)
 
         # Phase 1: Infrastructure
         infra_rows = []
+        if snapshots.get("phase1"):
+            infra_rows.append(f"SNAPSHOT: {fmt_snapshot(snapshots['phase1'])}")
+            infra_rows.append("-" * 40)
+        
+        if analytics.get("phase1_infrastructure"):
+            infra_rows.extend(fmt_insights(analytics["phase1_infrastructure"]))
+            infra_rows.append("-" * 40)
+
         for srv, item in sorted(infra.items()):
             alive = "ALIVE" if not item.get('is_dead') else "DEAD"
             infra_rows.append(f"▶ Server: {srv} [{clean(item.get('groups', 'N/A'))}] ({alive})")
@@ -173,6 +206,14 @@ class Reporter:
 
         # Phase 2: Zones
         zone_rows = []
+        if snapshots.get("phase2"):
+            zone_rows.append(f"SNAPSHOT: {fmt_snapshot(snapshots['phase2'])}")
+            zone_rows.append("-" * 40)
+        
+        if analytics.get("phase2_zones"):
+            zone_rows.extend(fmt_insights(analytics["phase2_zones"]))
+            zone_rows.append("-" * 40)
+
         for item in sorted(zones, key=lambda z: (z.get("domain", ""), z.get("server", ""))):
             audit = item.get("zone_audit", {})
             synced = "SYNC" if item.get('zone_is_synced') else "DESYNC"
@@ -193,6 +234,14 @@ class Reporter:
 
         # Phase 3: Records
         record_rows = []
+        if snapshots.get("phase3"):
+            record_rows.append(f"SNAPSHOT: {fmt_snapshot(snapshots['phase3'])}")
+            record_rows.append("-" * 40)
+        
+        if analytics.get("phase3_records"):
+            record_rows.extend(fmt_insights(analytics["phase3_records"]))
+            record_rows.append("-" * 40)
+
         for item in sorted(records, key=lambda r: (r.get("domain", ""), r.get("server", ""), r.get("type", ""))):
             consistent = "OK" if item.get('is_consistent') else "DIV!"
             record_rows.append(f"▶ Record: {clean(item.get('domain'))} [{clean(item.get('type'))}] @ {clean(item.get('server'))} ({consistent})")
