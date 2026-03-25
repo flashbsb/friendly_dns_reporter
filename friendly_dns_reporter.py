@@ -1122,6 +1122,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                         "check_scope": "SOA_ONLY",
                         "scope_confidence": "LOW",
                         "used_fallback": used_fallback,
+                        "soa_timers": timer_parts if len(timer_parts) >= 4 else None,
                     }
                     _store_query_evidence(row, "soa", soa)
                     _store_probe_repeat_summary(row, "soa", soa_repeat)
@@ -1185,6 +1186,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "check_scope": "FULL",
                     "scope_confidence": "MEDIUM" if used_fallback else "HIGH",
                     "used_fallback": used_fallback,
+                    "soa_timers": timer_parts if len(timer_parts) >= 4 else None,
                 }
                 _store_query_evidence(res, "soa", soa)
                 _store_probe_repeat_summary(res, "soa", soa_repeat)
@@ -1507,7 +1509,9 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                 is_consistent = compare_consistency(queries, settings)
                 main_q = queries[0]
                 query_latencies = [q.latency for q in queries if q.latency is not None]
+                jitter = round(max(query_latencies) - min(query_latencies), 2) if len(query_latencies) > 1 else 0.0
                 chain_latencies = []
+                chain_depths = []
                 mx_port25_latencies = []
                 
                 # SEMANTIC AUDIT
@@ -1543,9 +1547,11 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                         # Extract target (MX has priority first)
                         parts = ans.split()
                         target_host = parts[1] if rtype == "MX" and len(parts) > 1 else ans.rstrip('.')
-                        chain_ok, chain_msg, chain_latency = dns_engine.resolve_chain(server, target_host, rtype, rd=is_recursive)
+                        chain_ok, chain_msg, chain_latency, c_depth = dns_engine.resolve_chain(server, target_host, rtype, rd=is_recursive)
                         if chain_latency is not None:
                             chain_latencies.append(chain_latency)
+                        if c_depth:
+                            chain_depths.append(c_depth)
                         if not chain_ok:
                             findings.append(f"Dangling {rtype} target: {target_host} ({chain_msg})")
                         else:
@@ -1564,18 +1570,23 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                     "latency_avg": round(sum(query_latencies) / len(query_latencies), 2) if query_latencies else None,
                     "latency_min": round(min(query_latencies), 2) if query_latencies else None,
                     "latency_max": round(max(query_latencies), 2) if query_latencies else None,
+                    "latency_jitter": jitter,
+                    "ping_latency": infra.get("latency"),
+                    "dot_latency": infra.get("dot_lat"),
+                    "doh_latency": infra.get("doh_lat"),
                     "ping": infra.get("ping", "N/A"), "port53": infra.get("port53u", "N/A"),
-                    "version": infra.get("version", "N/A"), "recursion": infra.get("recursion", "N/A"),
-                    "dot": infra.get("dot", "N/A"), "doh": infra.get("doh", "N/A"),
-                    "nsid": main_q.nsid, "internally_consistent": "YES" if is_consistent else "DIV!",
+                    "recursion": infra.get("recursion", "N/A"),
+                    "ad": main_q.ad, "nsid": main_q.nsid, 
+                    "query_size": main_q.query_size, "response_size": main_q.response_size,
+                    "internally_consistent": "YES" if is_consistent else "DIV!",
                     "answers": ", ".join(main_q.answers),
                     "is_consistent": is_consistent,
                     "findings": findings,
                     "chain_latency": round(sum(chain_latencies) / len(chain_latencies), 2) if chain_latencies else None,
+                    "chain_depth": max(chain_depths) if chain_depths else 1,
                     "mx_port25_latency": round(sum(mx_port25_latencies) / len(mx_port25_latencies), 2) if mx_port25_latencies else None,
                     "wildcard_detected": False,
                     "wildcard_answers": [],
-                    "wildcard_scope": "ZONE",
                     "wildcard_latency": None
                 }
                 _store_query_evidence(entry, "main", main_q)
@@ -1641,7 +1652,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
 
         print(ui.format_result(
             r['domain'], r['group'], r['server'], r['type'], r['status'], r['latency'], r['is_consistent'],
-            warn_ms=settings.rec_latency_warn, crit_ms=settings.rec_latency_crit
+            warn_ms=settings.rec_latency_warn, crit_ms=settings.rec_latency_crit, ad=r.get('ad', False)
         ))
         ui.print_record_context(r)
         
@@ -1763,25 +1774,45 @@ def calculate_zone_score(res, settings):
     return s
 
 def calculate_scores(infra_results, zone_results, settings):
-    """Calculate aggregated Security and Privacy scores for global summary."""
+    """Calculate aggregated Security and Privacy scores and return a breakdown list."""
     if not infra_results:
-        return None, None
+        return None, None, []
     
     total_sec = 0
     total_priv = 0
     sec_count = 0
     priv_count = 0
     
+    # Counters for breakdown
+    stats = {
+        "dnssec": 0, "cookies": 0, "dot": 0, "doh": 0, 
+        "qname": 0, "ecs": 0, "axfr_safe": 0, "caa": 0
+    }
+    infra_total = len(infra_results)
+    
     for srv, res in infra_results.items():
         breakdown = calculate_server_score_breakdown(res, settings)
+        
+        # Breakdown counters
+        if res.get('dnssec') == "OK": stats["dnssec"] += 1
+        if res.get('cookies') is True: stats["cookies"] += 1
+        if res.get('dot') == "OK": stats["dot"] += 1
+        if res.get('doh') == "OK": stats["doh"] += 1
+        if res.get('qname_min') is True: stats["qname"] += 1
+        if res.get('ecs') is False: stats["ecs"] += 1
 
         security_score = breakdown["security"]
-        vuln_axfr = any(z['axfr_vulnerable'] for z in zone_results if z['server'] == srv)
-        if not vuln_axfr:
+        
+        # Zone-based security bonuses
+        vuln_zones = [z for z in zone_results if z['server'] == srv and z['axfr_vulnerable']]
+        if not vuln_zones:
             security_score = min(security_score + 10, 100)
+            stats["axfr_safe"] += 1
+            
         has_caa = any(len(z.get('caa_records', [])) > 0 for z in zone_results if z['server'] == srv)
         if has_caa:
             security_score = min(security_score + 5, 100)
+            stats["caa"] += 1
 
         total_sec += security_score
         sec_count += 1
@@ -1792,7 +1823,20 @@ def calculate_scores(infra_results, zone_results, settings):
         
     sec_avg = int(total_sec / sec_count) if sec_count else None
     priv_avg = int(total_priv / priv_count) if priv_count else None
-    return sec_avg, priv_avg
+    
+    # Build breakdown list
+    breakdown_list = []
+    def _pct(val): return int((val / infra_total) * 100) if infra_total > 0 else 0
+    
+    if stats["dnssec"]: breakdown_list.append(f"DNSSEC Protection : {_pct(stats['dnssec'])}% adoption")
+    if stats["cookies"]: breakdown_list.append(f"DNS Cookies       : {_pct(stats['cookies'])}% spoof-resistant")
+    if stats["dot"] or stats["doh"]: breakdown_list.append(f"Encryption (DoH/T): {_pct(max(stats['dot'], stats['doh']))}% tunnel usage")
+    if stats["qname"]: breakdown_list.append(f"QNAME Minimization: {_pct(stats['qname'])}% privacy signal")
+    if stats["axfr_safe"] == infra_total: breakdown_list.append("Zone Transfers    : 100% SECURE (AXFR Blocked)")
+    elif stats["axfr_safe"]: breakdown_list.append(f"Zone Transfers    : {_pct(stats['axfr_safe'])}% restricted")
+    if stats["caa"]: breakdown_list.append(f"CAA Policy        : {_pct(stats['caa'])}% issued-safe zones")
+
+    return sec_avg, priv_avg, breakdown_list
 
 def build_terminal_takeaways(infra_results, zone_results, results, security_available, privacy_available):
     takeaways = []
@@ -1942,7 +1986,7 @@ def main():
         results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
 
     # Final Analytics Calculation
-    sec_score, priv_score = calculate_scores(infra_cache, zone_results, settings)
+    sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
     security_available = sec_score is not None
     privacy_available = priv_score is not None
     scores_available = security_available and privacy_available
@@ -2078,7 +2122,7 @@ def main():
     })
     script_duration = time.time() - script_start_time
     
-    sec_score, priv_score = calculate_scores(infra_cache, zone_results, settings)
+    sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
     security_available = sec_score is not None
     privacy_available = priv_score is not None
     scores_available = security_available and privacy_available
@@ -2102,8 +2146,6 @@ def main():
         logging.info("=============================================================================")
         logging.info("FRIENDLY DNS REPORTER FINISHED")
         logging.info("=============================================================================")
-
-
     ui.print_summary_table(
         total,
         success,
@@ -2120,7 +2162,8 @@ def main():
         privacy_available=privacy_available,
         show_security=settings.enable_security_score,
         show_privacy=settings.enable_privacy_score,
-        takeaways=takeaways
+        takeaways=takeaways,
+        score_breakdown=score_breakdown
     )
 
 if __name__ == "__main__":

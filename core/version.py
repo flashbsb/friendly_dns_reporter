@@ -1,3 +1,3 @@
 """Single source of truth for the application version."""
 
-VERSION = "6.9.5"
+VERSION = "6.9.6"

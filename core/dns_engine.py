@@ -422,27 +422,66 @@ class DNSEngine:
                 continue
         return risks, timings
 
-    def resolve_chain(self, server, target, rtype, rd=True):
-        """Verify if a CNAME or MX target actually resolves to an IP (Dangling DNS check)."""
-        try:
-            # Check for both IPv4 and IPv6 resolution
+    def resolve_chain(self, server, target, rtype, rd=True, max_depth=10):
+        """Verify if a CNAME or MX target actually resolves to an IP (Dangling DNS check). returns (ok, msg, latency, depth)"""
+        current_target = target
+        depth = 0
+        latencies = []
+        
+        while depth < max_depth:
+            depth += 1
             has_ip = False
-            latencies = []
-            for family in ["A", "AAAA"]:
-                res = self.query(server, target, family, rd=rd)
-                if res.latency:
-                    latencies.append(res.latency)
-                if res.status == "NOERROR" and res.answers:
-                    has_ip = True
-                    break
-                if res.status == "NXDOMAIN":
-                    return False, "NXDOMAIN (Dangling!)", (sum(latencies) / len(latencies)) if latencies else None
+            found_cname = None
             
-            if has_ip:
-                return True, "RESOLVES", (sum(latencies) / len(latencies)) if latencies else None
-            return False, "NO ADDRESS RECORDS FOUND", (sum(latencies) / len(latencies)) if latencies else None
-        except:
-            return False, "ERROR", None
+            try:
+                # Check for address records
+                for family in ["A", "AAAA"]:
+                    res = self.query(server, current_target, family, rd=rd)
+                    if res.latency:
+                        latencies.append(res.latency)
+                    if res.status == "NOERROR" and res.answers:
+                        # Check if any answer is an IP or another CNAME
+                        for ans in res.answers:
+                            if family == "A":
+                                try:
+                                    socket.inet_aton(ans)
+                                    has_ip = True
+                                    break
+                                except: pass
+                            else: # AAAA
+                                try:
+                                    socket.inet_pton(socket.AF_INET6, ans)
+                                    has_ip = True
+                                    break
+                                except: pass
+                        
+                        if has_ip: break
+                        
+                        # Check for CNAME in answer if no IP found (sometimes resolvers return the CNAME)
+                        # But self.query returns the final answers if RD=True and resolver handles it.
+                        # If we are querying an auth server with RD=False, we might get a CNAME.
+                
+                if has_ip:
+                    return True, "RESOLVES", (sum(latencies) / len(latencies)) if latencies else None, depth
+                
+                # If no IP, check if it's a CNAME to follow
+                res_cname = self.query(server, current_target, "CNAME", rd=rd)
+                if res_cname.latency:
+                    latencies.append(res_cname.latency)
+                if res_cname.status == "NOERROR" and res_cname.answers:
+                    found_cname = res_cname.answers[0].rstrip('.')
+                    current_target = found_cname
+                    continue # Follow next hop
+                
+                if res_cname.status == "NXDOMAIN":
+                    return False, f"NXDOMAIN at depth {depth}", (sum(latencies) / len(latencies)) if latencies else None, depth
+                
+                return False, "NO ADDRESS OR CNAME FOUND", (sum(latencies) / len(latencies)) if latencies else None, depth
+                
+            except Exception as e:
+                return False, f"ERROR: {str(e)}", (sum(latencies) / len(latencies)) if latencies else None, depth
+                
+        return False, "MAX DEPTH EXCEEDED", (sum(latencies) / len(latencies)) if latencies else None, depth
 
     def check_port_25(self, server, port=25):
         """Check if SMTP port (default 25) is open on a target (MX Reachability)."""
@@ -462,9 +501,9 @@ class DNSEngine:
         test_domain = f"{rand_prefix}.{domain}"
         try:
             res = self.query(server, test_domain, "A", rd=rd)
-            if res['status'] == "NOERROR" and res['answers']:
-                return True, res['answers'], res.get("latency")
-            return False, None, res.get("latency")
+            if res.status == "NOERROR" and res.answers:
+                return True, res.answers, res.latency
+            return False, None, res.latency
         except:
             return False, None, None
 
