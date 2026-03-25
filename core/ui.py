@@ -204,13 +204,46 @@ def print_phase(name, objective=None):
         print(f"  {_status_tag('INFO')} {objective}")
 
 def print_phase_snapshot(title, items, interpretation=None):
-    print(f"\n  {BOLD}{title}{RESET}")
-    print(f"  {'-' * len(title)}")
-    for line in _format_metrics(items):
-        print(f"  {line}")
+    width = 80
+    print(f"\n  ┏━ {BOLD}{title.upper()}{RESET} {'━' * (width - len(title) - 6)}┓")
+    
+    formatted_rows = _format_metrics(items, width=3)
+    for row in formatted_rows:
+        clean_row = strip_ansi(row)
+        padding = width - len(clean_row) - 3
+        print(f"  ┃ {row}{' ' * padding} ┃")
+    
     if interpretation:
-        print(f"  Interpretation: {interpretation}")
-    print("")
+        print(f"  ┠{'─' * (width - 2)}┨")
+        # Wrap interpretation if too long
+        words = interpretation.split()
+        lines = []
+        curr = []
+        for w in words:
+            if sum(len(x)+1 for x in curr) + len(w) > width - 15:
+                lines.append(" ".join(curr))
+                curr = [w]
+            else: curr.append(w)
+        if curr: lines.append(" ".join(curr))
+        
+        for i, line in enumerate(lines):
+            prefix = f"{BOLD}[TAKEAWAY]{RESET}: " if i == 0 else "            "
+            padding = width - len(strip_ansi(prefix)) - len(line) - 3
+            print(f"  ┃ {prefix}{line}{' ' * padding} ┃")
+            
+    print(f"  ┗{'━' * (width - 2)}┛")
+
+def _print_boxed_card(title, lines, width=80):
+    """Generic helper to print a boxed help/info card."""
+    print(f"\n  ┌─ {BOLD}{title}{RESET} {'─' * (width - len(title) - 6)}┐")
+    for line in lines:
+        clean_line = strip_ansi(line)
+        if len(clean_line) > width - 4:
+            line = _ellipsize(line, width - 7)
+            clean_line = strip_ansi(line)
+        padding = width - len(clean_line) - 4
+        print(f"  │ {line}{' ' * padding} │")
+    print(f"  └{'─' * (width - 2)}┘")
 
 def print_phase_header(name):
     if "1" in name:
@@ -227,9 +260,12 @@ def print_phase_header(name):
         print("-" * 113)
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None, score_breakdown=None):
-    print("\n" + "┏" + "━" * 78 + "┓")
-    print(f"┃ {BOLD}FINAL DIAGNOSTIC DASHBOARD{RESET}{' ' * (78 - 26)} ┃")
-    print("┣" + "━" * 78 + "┫")
+    width = 80
+    build_tag = f"build v{VERSION}"
+    
+    print("\n" + "┏" + "━" * (width - 2) + "┓")
+    print(f"┃ {BOLD}FINAL DIAGNOSTIC DASHBOARD{RESET} {' ' * (width - 32 - len(build_tag))} {INFO}{build_tag}{RESET} ┃")
+    print("┣" + "━" * (width - 2) + "┫")
     
     metrics = [
         ("Total Queries", f"{total}"),
@@ -241,44 +277,52 @@ def print_summary_table(total, success, fail, div, sync_issues, reports, duratio
     
     for label, val in metrics:
         clean_val = strip_ansi(val)
-        padding = 76 - len(label) - len(clean_val)
+        padding = (width - 4) - len(label) - len(clean_val)
         print(f"┃ {label}: {val}{' ' * padding} ┃")
     
-    print("┣" + "━" * 78 + "┫")
+    print("┣" + "━" * (width - 2) + "┫")
 
     # Scores
     if show_security:
-        val_str = f"{get_score_color(sec_score)}{sec_score}/100{RESET}" if security_available else f"{WARN}N/A{RESET}"
+        sec_clr = get_score_color(sec_score)
+        val_str = f"{sec_clr}{sec_score}/100{RESET}" if security_available else f"{WARN}N/A{RESET}"
         lbl = "SECURITY SCORE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (78 - 20 - len(strip_ansi(val_str)))} ┃")
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
 
     if show_privacy:
-        val_str = f"{get_score_color(priv_score)}{priv_score}/100{RESET}" if privacy_available else f"{WARN}N/A{RESET}"
+        priv_clr = get_score_color(priv_score)
+        val_str = f"{priv_clr}{priv_score}/100{RESET}" if privacy_available else f"{WARN}N/A{RESET}"
         lbl = "PRIVACY SCORE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (78 - 20 - len(strip_ansi(val_str)))} ┃")
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
 
     if scores_available:
         avg_score = (sec_score + priv_score) / 2
         grade = format_grade(avg_score)
         val_str = f"{grade} ({avg_score:.1f}%)"
         lbl = "GLOBAL GRADE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (78 - 20 - len(strip_ansi(val_str)))} ┃")
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
 
     if score_breakdown:
-        print("┣" + "━" * 78 + "┫")
-        print(f"┃ {UNDER}SCORING BREAKDOWN{RESET}{' ' * (78 - 17)} ┃")
+        print("┣" + "━" * (width - 2) + "┫")
+        print(f"┃ {UNDER}SCORING BREAKDOWN{RESET}{' ' * (width - 21)} ┃")
         for item in score_breakdown[:6]: # Limit to top 6
-            print(f"┃  - {item:74} ┃")
+            icon = f"{OK}✔{RESET}" if "OK" in item.upper() or "+" in item else (f"{FAIL}✘{RESET}" if "FAIL" in item.upper() or "-" in item else f"{INFO}•{RESET}")
+            clean_item = strip_ansi(item)
+            padding = (width - 8) - len(clean_item)
+            print(f"┃  {icon} {item}{' ' * padding} ┃")
 
     if takeaways:
-        print("┣" + "━" * 78 + "┫")
-        print(f"┃ {BOLD}EXECUTIVE TAKEAWAYS{RESET}{' ' * (78 - 19)} ┃")
+        print("┣" + "━" * (width - 2) + "┫")
+        print(f"┃ {BOLD}EXECUTIVE TAKEAWAYS{RESET}{' ' * (width - 23)} ┃")
         for item in takeaways[:5]:
-            print(f"┃  ! {_ellipsize(item, 73):73} ┃")
+            clean_item = strip_ansi(item)
+            padding = (width - 8) - len(clean_item)
+            print(f"┃  {WARN}!{RESET} {item:75} ┃")
     
-    print("┣" + "━" * 78 + "┫")
-    print(f"┃ {BOLD}TIME:{RESET} {duration:6.2f}s | {INFO}friendly-dns-reporter{RESET}{' ' * (78 - 40)} ┃")
-    print("┗" + "━" * 78 + "┛")
+    print("┣" + "━" * (width - 2) + "┫")
+    timer_str = f"{duration:6.2f}s"
+    print(f"┃ {BOLD}TIME:{RESET} {timer_str} | {INFO}friendly-dns-reporter{RESET}{' ' * (width - 12 - len(timer_str) - 21 - 4)} ┃")
+    print("┗" + "━" * (width - 2) + "┛")
     
     if show_legend:
         print_legend_summary()
@@ -540,18 +584,28 @@ def print_warning(msg):
     print(f"  {WARN}{msg}{RESET}")
 
 def print_phase_footer(name, metrics, duration: float = 0.0, insights=None):
-    print(f"\n  {BOLD}{UNDER}Phase {name} Summary{RESET}")
-    for line in _format_metrics(list(metrics.items()), width=2):
-        print(f"  {line}")
+    width = 80
+    print(f"\n  {BOLD}RESULT SUMMARY: PHASE {name.upper()}{RESET}")
+    print(f"  {'═' * width}")
+    
+    rows = _format_metrics(list(metrics.items()), width=3)
+    for r in rows:
+        print(f"  {r}")
 
     if insights:
-        print(f"  {BOLD}Interpretation{RESET}")
+        print(f"\n  {BOLD}ANALYTICAL SIGNALS{RESET}")
         for k, v in insights.items():
-            print(f"  - {k}: {v}")
+            # Determine icon based on key
+            icon = f"{INFO}[i]{RESET}"
+            if any(x in k.upper() for x in ["HEALTH", "COMPLIANCE", "STABILITY"]): icon = f"{OK}[H]{RESET}"
+            if any(x in k.upper() for x in ["EXPOSURE", "RISK", "VULN"]): icon = f"{FAIL}[×]{RESET}"
+            if any(x in k.upper() for x in ["FALLBACK", "LATENCY"]): icon = f"{WARN}[!]{RESET}"
+            
+            print(f"  {icon} {BOLD}{k:22}{RESET}: {v}")
 
     if duration > 0.0:
-        print(f"  Execution Time: {duration:.2f}s")
-    print("  " + "-" * 60)
+        print(f"\n  {INFO}>> Process completed in {duration:.2f}s{RESET}")
+    print("  " + "─" * width)
 
 def format_result(target, group, server, rtype, status, latency, is_consistent, warn_ms=150, crit_ms=500, ad=False):
     if status == "NOERROR" or status == "NXDOMAIN":
@@ -653,70 +707,60 @@ def format_progress_status(active_items=None, idle_for=0.0):
 
 def print_legend_phase1_table():
     """Legend for Phase 1 results table (Infrastructure)."""
-    print(f"\n  {BOLD}PHASE 1: TECHNICAL COLUMN LEGEND{RESET}")
-    print(f"  - {BOLD}RELIABILITY (PING){RESET} : Packet loss visual bar [●●●●●●●○○○] and loss percentage.")
-    print(f"  - {BOLD}U53 / T53 (ms){RESET}     : Standard DNS Port 53 Availability & Latency (UDP / TCP).")
-    print(f"  - {BOLD}DoT / DoH (ms){RESET}     : Encrypted DNS Support & Latency (Port 853 / Port 443).")
-    print(f"  - {BOLD}Sc{RESET}                 : Individual infra score (security/privacy signals).")
-    print(f"  - {BOLD}Status{RESET}             : General reachability ({OK}ALIVE{RESET} / {FAIL}DEAD{RESET}).")
-    print("-" * 125)
+    _print_boxed_card("PHASE 1 HELP: Infrastructure Check", [
+        f"{BOLD}RELIABILITY{RESET} : Ping loss visual bar and percentage.",
+        f"{BOLD}U53 / T53 {RESET}    : DNS Port 53 Availability (UDP/TCP).",
+        f"{BOLD}DoT / DoH {RESET}    : Encrypted DNS Latency (Po853/Po443).",
+        f"{BOLD}Sc / Status{RESET}   : Individual infra score and reachability.",
+        f"{BOLD}Features {RESET}     : [S]igned [E]dns [K]ookies [Q]name [X]ecs"
+    ])
 
 def print_legend_phase1_analytics():
     """Legend for Phase 1 analytical summary."""
-    print(f"  {BOLD}PHASE 1: ANALYTICS CRITERIA{RESET}")
-    print(f"  - {BOLD}Infra Health{RESET} : Average health score across infrastructure. 100% = All services up with modern security.")
-    print(f"  - {BOLD}Adoption{RESET}     : Percentage of servers deployed with DoH, DoT, DNSSEC and Cookies.")
-    print(f"  - {BOLD}Net-Health{RESET}   : Composite latency index based on all successful probe timings, not ping alone.")
-    print("-" * 50)
+    _print_boxed_card("PHASE 1 ANALYTICS CRITERIA", [
+        f"{BOLD}Infra Health{RESET} : Average score (100% = Full modern security).",
+        f"{BOLD}Adoption{RESET}     : Percentage of servers with modern features.",
+        f"{BOLD}Net-Health{RESET}   : Composite latency index (not ping alone)."
+    ])
 
 def print_legend_phase2_table():
     """Legend for Phase 2 results table (Zone Integrity)."""
-    print(f"\n  {BOLD}PHASE 2: TECHNICAL COLUMN LEGEND{RESET}")
-    print(f"  - {BOLD}SOA SERIAL{RESET} : Zone Version ID. {OK}OK{RESET} = Servers in Sync | {FAIL}FAIL{RESET} = Desynchronized (Desync).")
-    print(f"  - {BOLD}LATENCY{RESET}    : Response time for authoritative SOA query.")
-    print(f"  - {BOLD}Sc{RESET}         : Zone Compliance Score (0-100).")
-    print(f"  - {BOLD}AA{RESET}         : Authoritative Answer flag. {OK}YES{RESET} = Correct | {FAIL}NO{RESET} = Lame Delegation detected.")
-    print(f"  - {BOLD}AXFR{RESET}       : {OK}REFUSED{RESET} = Secure | {FAIL}XFR-OK{RESET} = Vulnerable to data leakage.")
-    print("-" * 114)
+    _print_boxed_card("PHASE 2 HELP: Zone Integrity Check", [
+        f"{BOLD}SOA SERIAL{RESET} : Version sync status ({OK}OK{RESET}=Synced | {FAIL}FAIL{RESET}=Desync).",
+        f"{BOLD}LATENCY   {RESET} : Response time for authoritative probes.",
+        f"{BOLD}AA / AXFR {RESET} : Auth-Answer flag and Zone Transfer vulnerability.",
+        f"{BOLD}Timers    {RESET} : SOA RFC-compliance check (Ref/Ret/Exp/Min)."
+    ])
 
 def print_legend_phase2_analytics():
     """Legend for Phase 2 analytical summary."""
-    print(f"  {BOLD}PHASE 2: ANALYTICS CRITERIA{RESET}")
-    print(f"  - {BOLD}Zone Compliance{RESET}: Overall adherence score to zone security and synchronization standards.")
-    print(f"  - {BOLD}Sync Health{RESET}    : Percentage of tested domains whose authoritative servers shared the same SOA serial.")
-    print(f"  - {BOLD}CAA Adoption{RESET}   : Certificate Authority Authorization usage to prevent SSL hijacking.")
-    print(f"  - {BOLD}Zone Resp-Health{RESET}: Composite latency index across successful authoritative probes.")
-    print("-" * 50)
+    _print_boxed_card("PHASE 2 ANALYTICS CRITERIA", [
+        f"{BOLD}Zone Compliance{RESET}: Overall adherence to security standards.",
+        f"{BOLD}Sync Health    {RESET}: Percentage of zones fully synchronized.",
+        f"{BOLD}CAA Adoption   {RESET}: SSL policy visibility (RFC 8659)."
+    ])
 
 def print_legend_phase3_table():
     """Legend for Phase 3 results table (Record Consistency)."""
-    print(f"\n  {BOLD}PHASE 3: TECHNICAL COLUMN LEGEND{RESET}")
-    print(f"  - {BOLD}STATUS{RESET}      : {OK}NOERROR{RESET} (Success), {WARN}NXDOMAIN{RESET} (No exist), {FAIL}SERVFAIL/REFUSED/TIMEOUT{RESET}.")
-    print(f"  - {BOLD}LATENCY{RESET}     : Request response time in milliseconds.")
-    print(f"  - {BOLD}Sync{RESET}        : {OK}OK{RESET} = Consistent results | {WARN}DIV!{RESET} = Flapping/Divergent records.")
-    print(f"  - {BOLD}AD+{RESET}         : DNSSEC Authenticated Data flag detected in response.")
-    print(f"  - {BOLD}Amplification{RESET}: Response/Query byte ratio. >10x is considered high risk.")
-    print("-" * 113)
+    _print_boxed_card("PHASE 3 HELP: Record Consistency Check", [
+        f"{BOLD}STATUS {RESET}      : {OK}NOERROR{RESET}, {WARN}NXDOMAIN{RESET}, {FAIL}FAIL{RESET} states.",
+        f"{BOLD}Sync   {RESET}      : Record stability check ({OK}OK{RESET} or {WARN}DIV!{RESET}).",
+        f"{BOLD}AD+ flag{RESET}     : DNSSEC Authenticated Data bit from resolver.",
+        f"{BOLD}Amplification{RESET}: Byte ratio (High risk if >10x)."
+    ])
 
 def print_legend_phase3_analytics():
     """Legend for Phase 3 analytical summary."""
-    print(f"  {BOLD}PHASE 3: ANALYTICS CRITERIA{RESET}")
-    print(f"  - {BOLD}Stability Index{RESET}: Percentage of queries that returned identical results across sequential checks.")
-    print(f"  - {BOLD}Finding Density{RESET}: Average volume of semantic issues detected per record query.")
-    print(f"  - {BOLD}Resp-Health / Jitter{RESET}: Timing quality based on avg response latency and spread across repeated checks.")
-    print("-" * 50)
+    _print_boxed_card("PHASE 3 ANALYTICS CRITERIA", [
+        f"{BOLD}Stability Index{RESET}: Result consistency across sequential checks.",
+        f"{BOLD}Finding Density{RESET}: Average volume of issues per query.",
+        f"{BOLD}Network Jitter {RESET}: Timing variance across repeated probes."
+    ])
 
 def print_legend_summary():
     """Legend for Final Audit Summary."""
-    print(f"  {BOLD}SUMMARY LEGEND & SCORING CRITERIA:{RESET}")
-    print(f"  {INFO}SECURITY SCORE (0-100):{RESET}")
-    print(f"  - {BOLD}DNSSEC/CAA{RESET}   : Checks DNSSEC data serving and SSL issuance policies.")
-    print(f"  - {BOLD}DNS Cookies{RESET}  : RFC 7873 resistance against IP spoofing.")
-    print(f"  - {BOLD}AXFR Block{RESET}   : Evaluation of zone transfer security (RFC 5936).")
-    print(f"  - {BOLD}OpenResolver{RESET} : Detection of public recursion exposure.")
-    print(f"  {INFO}PRIVACY SCORE (0-100):{RESET}")
-    print(f"  - {BOLD}DoT/DoH{RESET}      : DNS encryption (TLS/HTTPS).")
-    print(f"  - {BOLD}QNAME-Min{RESET}    : RFC 7816 privacy signal.")
-    print(f"  - {BOLD}ECS Masking{RESET}  : RFC 7871 client privacy protection (Subnet masking).")
-    print(f"  {INFO}GRADING SYSTEM:{RESET}")
-    print(f"  - {OK}A+ / A (90+){RESET}   : Professional compliance | {WARN}C / D (60-80){RESET} : Warnings | {FAIL}F (<60){RESET} : Critical Risks.")
+    _print_boxed_card("FINAL DASHBOARD LEGEND & CRITERIA", [
+        f"{INFO}SECURITY SCORE{RESET} : DNSSEC, CAA, AXFR, Cookies, OpenRes.",
+        f"{INFO}PRIVACY SCORE {RESET} : DoT, DoH, QNAME-Min, ECS Masking.",
+        f"{INFO}GRADING SYSTEM{RESET} : {OK}A/A+(90+){RESET} | {WARN}C/D(60-80){RESET} | {FAIL}F(<60){RESET}."
+    ])
