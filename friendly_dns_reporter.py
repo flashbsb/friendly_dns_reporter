@@ -784,7 +784,8 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
         
         if not is_alive:
             res["is_dead"] = True
-            logging.info(f"[PHASE 1] SERVER {srv} IS DEAD (Ping Fail and Services Down)")
+            if settings.enable_execution_log:
+                logging.info(f"[PHASE 1] SERVER {srv} IS DEAD (Ping Fail and Services Down)")
             for field in ["version", "recursion", "dot", "doh", "dnssec", "edns0", "open_resolver"]:
                  res[field] = "UNREACHABLE"
             res["port53t_serv"] = "FAIL"
@@ -819,7 +820,8 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                 _set_probe_observability(res, probe_name, probe_status, probe_latency, source)
         else:
             ping_display = f"{res['latency']:.1f}ms" if res.get("latency") is not None else "N/A"
-            logging.info(f"[PHASE 1] Server {srv} is ALIVE. Latency: {ping_display}, Loss: {res['packet_loss']}%")
+            if settings.enable_execution_log:
+                logging.info(f"[PHASE 1] Server {srv} is ALIVE. Latency: {ping_display}, Loss: {res['packet_loss']}%")
             
             # Protocols (DoT/DoH)
             p853_open, p853_slat = conn.check_port(srv, 853)
@@ -1152,7 +1154,8 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                          insights)
     
     if settings.enable_execution_log and insights:
-        logging.info(f"[PHASE 1] ANALYTICS: {insights}")
+            if settings.enable_execution_log:
+                logging.info(f"[PHASE 1] ANALYTICS: {insights}")
 
     if show_legends:
         ui.print_legend_phase1_analytics()
@@ -1387,7 +1390,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 axfr_ok = axfr_res.status == "VULNERABLE" if axfr_res else False
                 axfr_msg = axfr_res.status if axfr_res else "DISABLED"
                 axfr_latency = axfr_res.latency if axfr_res else None
-                logging.info(f"[PHASE 2] Zone {domain} on {srv}: SOA Serial: {serial}, AXFR: {axfr_ok} ({axfr_msg})")
+                if settings.enable_execution_log:
+                    logging.info(f"[PHASE 2] Zone {domain} on {srv}: SOA Serial: {serial}, AXFR: {axfr_ok} ({axfr_msg})")
                 
                 caa_res = dns_engine.validate_caa(srv, domain, rd=is_recursive) if settings.enable_caa_check else None
                 caa_recs = []
@@ -1395,7 +1399,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                 if caa_res:
                     caa_recs = caa_res.answers
                     caa_latency = caa_res.latency
-                logging.info(f"[PHASE 2] Zone {domain} on {srv}: CAA Records: {len(caa_recs)}")
+                if settings.enable_execution_log:
+                    logging.info(f"[PHASE 2] Zone {domain} on {srv}: CAA Records: {len(caa_recs)}")
                 
                 res = {
                     "domain": domain, "server": srv, "group": group_name,
@@ -1671,9 +1676,6 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 2] ANALYTICS: {insights}")
-
-    if show_legends:
-        ui.print_legend_phase2_analytics()
 
     return zone_results, insights
 
@@ -1960,9 +1962,6 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 3] ANALYTICS: {insights}")
 
-    if show_legends:
-        ui.print_legend_phase3_analytics()
-
     return results, insights
 
 def calculate_server_score_breakdown(res, settings):
@@ -2101,6 +2100,134 @@ def calculate_scores(infra_results, zone_results, settings):
     if stats["caa"]: breakdown_list.append(f"CAA Policy        : {_pct(stats['caa'])}% issued-safe zones")
 
     return sec_avg, priv_avg, breakdown_list
+
+def log_phase1_results(settings, infra_results):
+    """Log detailed Phase 1 results for each server when execution log is enabled."""
+    if not settings.enable_execution_log:
+        return
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[PHASE 1] DETAILED SERVER RESULTS:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for srv, data in sorted(infra_results.items()):
+        if data.get("is_dead"):
+            logging.info(f"  SERVER {srv}: DEAD")
+            continue
+        logging.info(f"  SERVER {srv}:")
+        logging.info(f"    Groups: {data.get('groups', 'N/A')} | Profile: {data.get('server_profile', 'unknown')} | Score: {data.get('infrastructure_score', 'N/A')}")
+        logging.info(f"    Ping: {data.get('ping', 'N/A')} | Lat: {data.get('latency', 'N/A')}ms | Loss: {data.get('packet_loss', 'N/A')}% | Range: {data.get('latency_min', '?')}-{data.get('latency_max', '?')}ms")
+        logging.info(f"    Port53u: {data.get('port53u', 'N/A')} | UDP53 Serv: {data.get('port53u_serv', 'N/A')} | Lat: {data.get('udp53_probe_lat', 'N/A')}ms")
+        logging.info(f"    Port53t: {data.get('port53t', 'N/A')} | TCP53 Serv: {data.get('port53t_serv', 'N/A')} | Conn: {data.get('port53t_conn_lat', 'N/A')}ms | Probe: {data.get('port53t_probe_lat', 'N/A')}ms")
+        logging.info(f"    DoT: {data.get('dot', 'N/A')} | Port853: {data.get('port853', 'N/A')} | Conn: {data.get('port853_conn_lat', 'N/A')}ms | Lat: {data.get('dot_lat', 'N/A')}ms")
+        logging.info(f"    DoH: {data.get('doh', 'N/A')} | Port443: {data.get('port443', 'N/A')} | Conn: {data.get('port443_conn_lat', 'N/A')}ms | Lat: {data.get('doh_lat', 'N/A')}ms")
+        logging.info(f"    Version: {data.get('version', 'N/A')} | Recursion: {data.get('recursion', 'N/A')}")
+        logging.info(f"    Classification: {data.get('classification', 'N/A')} | Exposed: {data.get('resolver_exposed', 'N/A')} | Restricted: {data.get('resolver_restricted', 'N/A')} | Confidence: {data.get('confidence', 'N/A')}")
+        logging.info(f"    DNSSEC: {data.get('dnssec', 'N/A')}({data.get('dnssec_mode', '?')}) | EDNS0: {data.get('edns0', 'N/A')} | ECS: {data.get('ecs', 'N/A')} | QNAME: {data.get('qname_min', 'N/A')}({data.get('qname_min_confidence', '?')}) | Cookies: {data.get('cookies', 'N/A')}")
+        logging.info(f"    Web Risks: {data.get('web_risks', [])} | Web80: {(data.get('web_risk_status', {}) or {}).get('80', '?')} | Web443: {(data.get('web_risk_status', {}) or {}).get('443', '?')}")
+        for pn in ["udp53_probe", "tcp53_probe", "dot_probe", "doh_probe", "open_resolver"]:
+            avg = data.get(f"{pn}_latency_avg")
+            mn = data.get(f"{pn}_latency_min")
+            mx = data.get(f"{pn}_latency_max")
+            jit = data.get(f"{pn}_latency_jitter")
+            cnt = data.get(f"{pn}_sample_count", 0)
+            if cnt > 0:
+                logging.info(f"    Repeat {pn}: {cnt}x avg={avg}ms min={mn}ms max={mx}ms jitter={jit}ms")
+        for pn in ["version", "recursion", "dnssec", "edns0", "dot_probe", "doh_probe", "open_resolver"]:
+            proto = data.get(f"{pn}_protocol")
+            rcode = data.get(f"{pn}_rcode")
+            if proto or rcode:
+                logging.info(f"    Evidence {pn}: proto={proto} rcode={rcode} flags={data.get(f'{pn}_flags', [])} q={data.get(f'{pn}_query_size', '?')}B r={data.get(f'{pn}_response_size', '?')}B aa={data.get(f'{pn}_aa')} ra={data.get(f'{pn}_ra')}")
+
+
+def log_phase2_results(settings, zone_results):
+    """Log detailed Phase 2 results for each zone when execution log is enabled."""
+    if not settings.enable_execution_log:
+        return
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[PHASE 2] DETAILED ZONE RESULTS:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for z in sorted(zone_results, key=lambda x: (str(x.get("domain", "")), str(x.get("server", "")))):
+        domain = z.get("domain", "?")
+        srv = z.get("server", "?")
+        synced = "SYNC" if z.get("zone_is_synced") else "DESYNC"
+        logging.info(f"  ZONE {domain} @ {srv}:")
+        logging.info(f"    Status: {z.get('status', 'N/A')} | Serial: {z.get('serial', 'N/A')} | Lat: {z.get('latency', 'N/A')}ms | Score: {z.get('zone_score', 'N/A')} | {synced}")
+        logging.info(f"    AA: {z.get('aa', 'N/A')} | AXFR: {z.get('axfr_detail', 'N/A')} | Vulnerable: {z.get('axfr_vulnerable', 'N/A')}")
+        logging.info(f"    DNSSEC: {z.get('dnssec', 'N/A')} | CAA: {len(z.get('caa_records', []))} records")
+        logging.info(f"    MNAME: {z.get('mname', 'N/A')} | RNAME: {z.get('rname', 'N/A')} | NS Consistent: {z.get('ns_consistent', 'N/A')}")
+        logging.info(f"    Scope: {z.get('check_scope', 'N/A')} | Confidence: {z.get('scope_confidence', 'N/A')} | Fallback: {z.get('used_fallback', 'N/A')}")
+        timers = z.get("soa_timers")
+        if timers and isinstance(timers, dict):
+            logging.info(f"    Timers: Ref={timers.get('refresh')} Ret={timers.get('retry')} Exp={timers.get('expire')} Min={timers.get('min_ttl')}")
+        audit = z.get("zone_audit", {})
+        if audit:
+            logging.info(f"    Audit: timers_ok={audit.get('timers_ok')} mname_reachable={audit.get('mname_reachable')} glue_ok={audit.get('glue_ok')} web_risk={audit.get('web_risk')} issues={audit.get('timers_issues', [])}")
+        logging.info(f"    Latencies: ping={z.get('ping_latency', 'N/A')}ms soa={z.get('soa_latency', 'N/A')}ms fallback={z.get('soa_fallback_latency', 'N/A')}ms ns={z.get('ns_latency', 'N/A')}ms axfr={z.get('axfr_latency', 'N/A')}ms caa={z.get('caa_latency', 'N/A')}ms dnssec={z.get('zone_dnssec_latency', 'N/A')}ms")
+        for pn in ["soa", "ns", "caa", "zone_dnssec"]:
+            proto = z.get(f"{pn}_protocol")
+            rcode = z.get(f"{pn}_rcode")
+            if proto or rcode:
+                logging.info(f"    Evidence {pn}: proto={proto} rcode={rcode} flags={z.get(f'{pn}_flags', [])} q={z.get(f'{pn}_query_size', '?')}B r={z.get(f'{pn}_response_size', '?')}B aa={z.get(f'{pn}_aa')} ra={z.get(f'{pn}_ra')}")
+
+
+def log_phase3_results(settings, record_results):
+    """Log detailed Phase 3 results for each query when execution log is enabled."""
+    if not settings.enable_execution_log:
+        return
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[PHASE 3] DETAILED QUERY RESULTS:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for r in sorted(record_results, key=lambda x: (str(x.get("domain", "")), str(x.get("server", "")), str(x.get("type", "")))):
+        domain = r.get("domain", "?")
+        srv = r.get("server", "?")
+        rtype = r.get("type", "?")
+        consistent = "OK" if r.get("is_consistent") else "DIV!"
+        logging.info(f"  QUERY {domain} [{rtype}] @ {srv}:")
+        logging.info(f"    Status: {r.get('status', 'N/A')} | Lat: {r.get('latency', 'N/A')}ms | Consistent: {consistent}")
+        logging.info(f"    Timings: first={r.get('latency_first', 'N/A')}ms avg={r.get('latency_avg', 'N/A')}ms min={r.get('latency_min', 'N/A')}ms max={r.get('latency_max', 'N/A')}ms jitter={r.get('latency_jitter', 'N/A')}ms")
+        logging.info(f"    AD: {r.get('ad', 'N/A')} | Query: {r.get('query_size', 'N/A')}B | Response: {r.get('response_size', 'N/A')}B | NSID: {r.get('nsid', 'N/A')}")
+        logging.info(f"    Answers: {r.get('answers', 'N/A')}")
+        logging.info(f"    Chain: lat={r.get('chain_latency', 'N/A')}ms depth={r.get('chain_depth', 'N/A')} | MX25: {r.get('mx_port25_latency', 'N/A')}ms")
+        logging.info(f"    Wildcard: detected={r.get('wildcard_detected', 'N/A')} answers={r.get('wildcard_answers', [])} lat={r.get('wildcard_latency', 'N/A')}ms")
+        if r.get("findings"):
+            for f in r["findings"]:
+                logging.info(f"    Finding: {f}")
+        proto = r.get("main_protocol")
+        rcode = r.get("main_rcode")
+        if proto or rcode:
+            logging.info(f"    Evidence: proto={proto} rcode={rcode} flags={r.get('main_flags', [])} q={r.get('main_query_size', '?')}B r={r.get('main_response_size', '?')}B aa={r.get('main_aa')} ra={r.get('main_ra')}")
+
+
+def log_advanced_analytics(settings, advanced):
+    """Log advanced analytics results when execution log is enabled."""
+    if not settings.enable_execution_log:
+        return
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[ADVANCED ANALYTICS] SERVER HEALTH INDEX:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for srv, d in sorted(advanced.get("server_health_index", {}).items(), key=lambda x: x[1].get("total", 0)):
+        logging.info(f"  {srv}: total={d.get('total', 0)} infra={d.get('infra_score', 0)} zones={d.get('zone_avg', 0)} records={d.get('record_consistency', 0)} alive={d.get('alive', False)} issues={d.get('issues', [])}")
+
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[ADVANCED ANALYTICS] CROSS-PHASE CORRELATIONS:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for c in advanced.get("cross_phase_correlations", []):
+        logging.info(f"  [{c.get('pattern', '?').upper()}] {c.get('server', '?')}: infra={c.get('infra', [])} zones={c.get('zones', [])} records={c.get('records', [])} severity={c.get('severity', 0)}")
+
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[ADVANCED ANALYTICS] PROBLEM RANKING:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    for p in advanced.get("problem_ranking", []):
+        logging.info(f"  [{p.get('severity', 0):2d}] {p.get('category', '?'):8} {p.get('subject', '?'):40} {p.get('detail', '?')}")
+
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    logging.info("[ADVANCED ANALYTICS] COVERAGE RELIABILITY:")
+    logging.info("────────────────────────────────────────────────────────────────────────────")
+    cov = advanced.get("coverage_reliability", {})
+    for phase_key in ["phase1", "phase2", "phase3"]:
+        phase_data = cov.get(phase_key, {})
+        for k, v in phase_data.items():
+            logging.info(f"  {phase_key}.{k}: {v}")
+
 
 def build_terminal_takeaways(infra_results, zone_results, results, security_available, privacy_available):
     takeaways = []
@@ -2443,12 +2570,14 @@ def main():
     p1_insights = {}
     if run_p1:
         infra_cache, p1_insights = run_phase1_infrastructure(all_servers, srv_to_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=show_legends)
+        log_phase1_results(settings, infra_cache)
 
     # Run Phase 2: Zones
     zone_results = []
     p2_insights = {}
     if run_p2:
         zone_results, p2_insights = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=show_legends)
+        log_phase2_results(settings, zone_results)
 
     # Run Phase 3: Records
     results = []
@@ -2476,6 +2605,7 @@ def main():
                         for server in dns_groups[group]["servers"]:
                             tasks.append((domain, target, group, server, records))
         results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock, show_legends=show_legends)
+        log_phase3_results(settings, results)
 
     # Final Analytics Calculation
     sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
@@ -2516,6 +2646,7 @@ def main():
     # Prepare terminal-style takeaways and breakdown early for reporting
     takeaways = build_terminal_takeaways(infra_cache, zone_results, results, security_available, privacy_available)
     advanced = analyze_advanced_analytics(infra_cache, zone_results, results, settings)
+    log_advanced_analytics(settings, advanced)
     
     report_data = {
         "metadata": {
