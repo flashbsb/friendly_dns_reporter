@@ -140,6 +140,36 @@
         tr.anomaly-row td { background: linear-gradient(90deg, rgba(251,113,133,0.18), rgba(251,113,133,0.05)); }
         .detail-row td { padding: 8px 18px 12px 18px; font-size: 11px; color: var(--text-secondary); }
         
+        .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+        .detail-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px 12px; }
+        .detail-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-2); margin-bottom: 6px; font-weight: 700; }
+        .detail-kv { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .detail-kv:last-child { border-bottom: none; }
+        .detail-kv .k { color: var(--text-secondary); }
+        .detail-kv .v { color: var(--text-primary); font-weight: 600; text-align: right; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .ranking-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .ranking-item:last-child { border-bottom: none; }
+        .ranking-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); flex: 1; overflow: hidden; }
+        .ranking-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .ranking-rank { font-size: 12px; font-weight: 800; width: 20px; text-align: center; }
+        .ranking-server { font-size: 12px; font-weight: 600; min-width: 100px; }
+        .ranking-score { font-size: 12px; font-weight: 800; min-width: 36px; text-align: right; }
+        .ranking-issues { font-size: 10px; color: var(--text-secondary); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .correlation-card { padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; background: rgba(255,255,255,0.02); }
+        .correlation-card.degraded { border-color: rgba(251,113,133,0.35); background: rgba(251,113,133,0.06); }
+        .correlation-card.stressed { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.05); }
+        .correlation-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .correlation-flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+        .correlation-flag { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+
+        .problem-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 12px; }
+        .problem-item:last-child { border-bottom: none; }
+        .problem-sev { font-size: 11px; font-weight: 800; min-width: 28px; text-align: center; border-radius: 4px; padding: 1px 4px; }
+        .problem-subject { color: var(--text-primary); font-weight: 600; }
+        .problem-detail { color: var(--text-secondary); font-size: 11px; }
+
         .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
         .badge-danger { background: rgba(224, 47, 68, 0.15); color: #ff5f6d; }
         .badge-success { background: rgba(86, 166, 75, 0.15); color: #73f273; }
@@ -833,51 +863,110 @@
 
             let html = '';
 
-            // Worst / Best servers
+            // Worst / Best servers with progress bars
             if (worst.length || best.length) {
+                const renderRanking = (items, label, color) => {
+                    return items.map((s, i) => {
+                        const pct = Math.max(s.total, 2);
+                        const issueStr = (s.issues || []).filter(x => x !== 'NONE').join(', ') || 'Healthy';
+                        return `<div class="ranking-item">
+                            <span class="ranking-rank" style="color:${color}">${i + 1}</span>
+                            <span class="ranking-server">${this.escapeAttr(s.server)}</span>
+                            <div class="ranking-bar"><div class="ranking-bar-fill" style="width:${pct}%; background:${this.getClr(s.total)}"></div></div>
+                            <span class="ranking-score" style="color:${this.getClr(s.total)}">${s.total}</span>
+                            <span class="ranking-issues" title="${this.escapeAttr(issueStr)}">${this.escapeAttr(issueStr)}</span>
+                        </div>`;
+                    }).join('');
+                };
+
                 html += `<div class="phase-card" style="grid-column: 1 / -1">
                     <h3>Server Health Rankings</h3>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px">
                         <div>
-                            <div style="font-size:10px; color:var(--danger); text-transform:uppercase; margin-bottom:8px">Worst Servers</div>
-                            ${worst.map((s,i) => `<div style="font-size:12px; margin-bottom:4px; color:var(--text-primary)">
-                                <b>${i+1}.</b> ${this.escapeAttr(s.server)} — <span style="color:${this.getClr(s.total)}">${s.total}/100</span> <span style="color:var(--text-secondary)">${(s.issues||[]).join(', ')}</span>
-                            </div>`).join('')}
+                            <div style="font-size:10px; color:var(--danger); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; font-weight:700">Worst Servers</div>
+                            ${renderRanking(worst, 'Worst', 'var(--danger)')}
                         </div>
                         <div>
-                            <div style="font-size:10px; color:var(--success); text-transform:uppercase; margin-bottom:8px">Best Servers</div>
-                            ${best.map((s,i) => `<div style="font-size:12px; margin-bottom:4px; color:var(--text-primary)">
-                                <b>${i+1}.</b> ${this.escapeAttr(s.server)} — <span style="color:${this.getClr(s.total)}">${s.total}/100</span> <span style="color:var(--text-secondary)">${(s.issues||[]).join(', ')}</span>
-                            </div>`).join('')}
+                            <div style="font-size:10px; color:var(--success); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; font-weight:700">Best Servers</div>
+                            ${renderRanking(best, 'Best', 'var(--success)')}
                         </div>
                     </div>
-                    ${wb.dead_count ? `<div style="font-size:11px; color:var(--danger); margin-top:8px">${wb.dead_count} dead server(s) scored 0</div>` : ''}
+                    ${wb.dead_count ? `<div style="font-size:11px; color:var(--danger); margin-top:10px; padding-top:8px; border-top:1px solid var(--border)">${wb.dead_count} dead server(s) scored 0</div>` : ''}
                 </div>`;
             }
 
-            // Cross-phase
+            // Cross-phase correlations with structured cards
             if (cross.length) {
+                const crossHtml = cross.slice(0, 8).map(c => {
+                    const cls = c.pattern === 'degraded' ? 'degraded' : 'stressed';
+                    const pLabel = c.pattern === 'degraded' ? 'DEGRADED' : 'STRESSED';
+                    const pClr = c.pattern === 'degraded' ? 'var(--danger)' : 'var(--warning)';
+                    const flags = [
+                        ...c.infra.map(f => `infra:${f}`),
+                        ...c.zones.map(f => `zone:${f}`),
+                        ...c.records.map(f => `rec:${f}`)
+                    ];
+                    return `<div class="correlation-card ${cls}">
+                        <div class="correlation-header">
+                            <span style="font-weight:700">${this.escapeAttr(c.server)}</span>
+                            <span class="badge ${cls === 'degraded' ? 'badge-danger' : 'badge-warning'}">${pLabel}</span>
+                        </div>
+                        <div class="correlation-flags">
+                            ${flags.map(f => `<span class="correlation-flag">${this.escapeAttr(f)}</span>`).join('')}
+                        </div>
+                    </div>`;
+                }).join('');
+
                 html += `<div class="phase-card">
                     <h3>Cross-Phase Correlations</h3>
-                    ${cross.slice(0, 5).map(c => {
-                        const clr = c.pattern === 'degraded' ? 'var(--danger)' : 'var(--warning)';
-                        return `<div style="font-size:12px; margin-bottom:6px; color:var(--text-primary)">
-                            <span style="color:${clr}">[${c.pattern.toUpperCase()}]</span> ${this.escapeAttr(c.server)} — infra:${c.infra.length} zone:${c.zones.length} rec:${c.records.length} flags
-                        </div>`;
-                    }).join('')}
+                    <div style="font-size:10px; color:var(--text-secondary); margin-bottom:8px">Servers with flags in 2+ phases</div>
+                    ${crossHtml}
                 </div>`;
             }
 
-            // Problem ranking
+            // Problem ranking with severity badges
             if (problems.length) {
+                const problemHtml = problems.slice(0, 12).map(p => {
+                    const sevClr = p.severity >= 7 ? 'var(--danger)' : (p.severity >= 5 ? 'var(--warning)' : 'var(--info)');
+                    const sevBg = p.severity >= 7 ? 'rgba(251,113,133,0.12)' : (p.severity >= 5 ? 'rgba(245,158,11,0.1)' : 'rgba(96,165,250,0.1)');
+                    return `<div class="problem-item">
+                        <span class="problem-sev" style="background:${sevBg}; color:${sevClr}">${p.severity}</span>
+                        <span class="badge ${p.severity >= 7 ? 'badge-danger' : (p.severity >= 5 ? 'badge-warning' : 'badge-info')}">${this.escapeAttr(p.category)}</span>
+                        <span class="problem-subject">${this.escapeAttr(p.subject)}</span>
+                        <span class="problem-detail">${this.escapeAttr(p.detail)}</span>
+                    </div>`;
+                }).join('');
+
                 html += `<div class="phase-card">
                     <h3>Top Problems by Severity</h3>
-                    ${problems.slice(0, 8).map(p => {
-                        const clr = p.severity >= 7 ? 'var(--danger)' : (p.severity >= 5 ? 'var(--warning)' : 'var(--info)');
-                        return `<div style="font-size:12px; margin-bottom:6px; color:var(--text-primary)">
-                            <span style="color:${clr}">[${p.severity}] ${p.category}</span> ${this.escapeAttr(p.subject)} — ${this.escapeAttr(p.detail)}
-                        </div>`;
-                    }).join('')}
+                    ${problemHtml}
+                </div>`;
+            }
+
+            // Coverage reliability
+            if (cov.phase1 || cov.phase2 || cov.phase3) {
+                let covHtml = '';
+                if (cov.phase1) {
+                    covHtml += `<div class="detail-section">
+                        <div class="detail-section-title">Phase 1 Coverage (n=${cov.phase1_sample_size || '?'})</div>
+                        ${Object.entries(cov.phase1).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
+                    </div>`;
+                }
+                if (cov.phase2) {
+                    covHtml += `<div class="detail-section">
+                        <div class="detail-section-title">Phase 2 Coverage</div>
+                        ${Object.entries(cov.phase2).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
+                    </div>`;
+                }
+                if (cov.phase3) {
+                    covHtml += `<div class="detail-section">
+                        <div class="detail-section-title">Phase 3 Coverage</div>
+                        ${Object.entries(cov.phase3).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
+                    </div>`;
+                }
+                html += `<div class="phase-card" style="grid-column: 1 / -1">
+                    <h3>Coverage Reliability</h3>
+                    <div class="detail-grid">${covHtml}</div>
                 </div>`;
             }
 
@@ -909,23 +998,23 @@
                 <th>${this.help('IP Address', 'Server Address', 'Target resolver or authoritative server IP.')}</th>
                 <th>${this.help('Profile', 'Server Profile', 'Indicates whether the server behaves as recursive, authoritative, mixed, or unknown.')}</th>
                 <th>${this.help('Ping', 'Reachability', 'Basic ICMP round-trip time used as a coarse network health signal.')}</th>
-                <th>${this.help('U53', 'UDP DNS Service', 'Shows whether UDP/53 responded like a DNS service. This is a responsiveness check, not a full functional certification.')}</th>
-                <th>${this.help('T53', 'TCP DNS Service', 'Shows whether TCP/53 responded like a DNS service. This is a responsiveness check, not a full functional certification.')}</th>
+                <th>${this.help('U53', 'UDP DNS Service', 'Whether UDP/53 responded like a DNS service.')}</th>
+                <th>${this.help('T53', 'TCP DNS Service', 'Whether TCP/53 responded like a DNS service.')}</th>
                 <th>${this.help('DoT', 'DNS over TLS', 'Encrypted DNS support over TCP/853.')}</th>
                 <th>${this.help('DoH', 'DNS over HTTPS', 'Encrypted DNS support over HTTPS.')}</th>
-                <th>${this.help('Score', 'Infrastructure Score', 'Profile-aware summary of security and, where applicable, privacy posture.')}</th>
-                <th>${this.help('Resolver', 'Resolver Classification', 'PUBLIC means public recursion was observed; RESTRICTED means recursion appears controlled; UNKNOWN means the evidence was inconclusive.')}</th>
-                <th>${this.help('Caps', 'Capability Markers', 'Shows detected protocol and privacy/security capabilities such as DNSSEC data serving, EDNS, cookies, heuristic QNAME minimization, and ECS behavior.')}</th>
-                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports detected on the same host. Useful as context, not necessarily a DNS flaw by itself.')}</th>
+                <th>${this.help('Score', 'Infrastructure Score', 'Profile-aware summary of security and privacy posture.')}</th>
+                <th>${this.help('Resolver', 'Resolver Classification', 'PUBLIC=open recursion, RESTRICTED=controlled, UNKNOWN=inconclusive.')}</th>
+                <th>${this.help('Caps', 'Capabilities', 'S=DNSSEC E=EDNS K=Cookies Q=QNAME X=ECS.')}</th>
+                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports on the same host as context.')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
                 const caps = [
-                    d.dnssec === 'OK' ? 'DNSSEC' : null,
-                    d.edns0 === 'OK' ? 'EDNS0' : null,
-                    d.cookies === true ? 'Cookies' : null,
-                    d.qname_min === true ? 'QNAME' : null,
-                    d.ecs === false ? 'No-ECS' : null
-                ].filter(Boolean).join(', ') || 'None';
+                    d.dnssec === 'OK' ? '<span style="color:var(--success)">S</span>' : '<span style="color:var(--danger)">-</span>',
+                    d.edns0 === 'OK' ? '<span style="color:var(--success)">E</span>' : '<span style="color:var(--danger)">-</span>',
+                    d.cookies === true ? '<span style="color:var(--success)">K</span>' : '<span style="color:var(--danger)">-</span>',
+                    d.qname_min === true ? '<span style="color:var(--success)">Q</span>' : '<span style="color:var(--danger)">-</span>',
+                    d.ecs === false ? '<span style="color:var(--success)">X</span>' : '<span style="color:var(--danger)">-</span>'
+                ].join('');
                 const webRisk = d.web_risks && d.web_risks.length > 0 ? d.web_risks.join(', ') : 'None';
                 const resolverBadge = d.resolver_exposed === true ? 'badge-danger' : (d.resolver_restricted === true ? 'badge-success' : 'badge-warning');
                 html += `<tr class="${d.resolver_exposed === true ? 'anomaly-row' : ''}">
@@ -936,28 +1025,76 @@
                     <td><span class="badge ${d.port53u_serv==='OK'?'badge-success':'badge-danger'}">${d.port53u_serv}</span></td>
                     <td><span class="badge ${d.port53t_serv==='OK'?'badge-success':'badge-danger'}">${d.port53t_serv}</span></td>
                     <td>${d.dot}</td><td>${d.doh}</td>
-                    <td style="color:${this.getClr(d.infrastructure_score)}">${d.infrastructure_score}</td>
+                    <td style="color:${this.getClr(d.infrastructure_score)}; font-weight:800">${d.infrastructure_score}</td>
                     <td><span class="badge ${resolverBadge}">${d.classification || d.open_resolver}</span></td>
-                    <td>${caps}</td>
+                    <td style="font-family:monospace; letter-spacing:2px">${caps}</td>
                     <td>${webRisk}</td>
                 </tr>`;
+                // Detail row with structured sub-sections
+                const obsProbes = ['udp53_probe','tcp53_probe','version','recursion','dot_probe','doh_probe','dnssec','edns0','open_resolver','ecs','qname_min','cookies'];
+                const repeatProbes = ['udp53_probe','tcp53_probe','dot_probe','doh_probe','open_resolver'];
                 html += `<tr class="detail-row"><td colspan="12">
-                    Version: ${this.highlight(d.version || '-')} |
-                    Open Resolver Raw: ${this.highlight(d.open_resolver || '-')} |
-                    Ping Range: ${this.highlight(`${this.fmtLatency(d.latency_min, 0)} .. ${this.fmtLatency(d.latency_max, 0)}`)} |
-                    UDP53 Probe: ${this.highlight(this.fmtLatency(d.udp53_probe_lat, 0))} |
-                    TCP53 Conn/Probe: ${this.highlight(`${this.fmtLatency(d.port53t_conn_lat, 0)} / ${this.fmtLatency(d.port53t_probe_lat, 0)}`)} |
-                    Version/Recursion: ${this.highlight(`${this.fmtLatency(d.version_lat, 0)} / ${this.fmtLatency(d.recursion_lat, 0)}`)} |
-                    DoT Conn/Probe: ${this.highlight(`${this.fmtLatency(d.port853_conn_lat, 0)} / ${this.fmtLatency(d.dot_lat, 0)}`)} |
-                    DoH Conn/Probe: ${this.highlight(`${this.fmtLatency(d.port443_conn_lat, 0)} / ${this.fmtLatency(d.doh_lat, 0)}`)} |
-                    DNSSEC/EDNS0/ECS/QNAME/Cookies/WebRisk/OpenRes: ${this.highlight(`${this.fmtLatency(d.dnssec_lat, 0)} / ${this.fmtLatency(d.edns0_lat, 0)} / ${this.fmtLatency(d.ecs_lat, 0)} / ${this.fmtLatency(d.qname_min_lat, 0)} / ${this.fmtLatency(d.cookies_lat, 0)} / ${this.fmtLatency(d.web_risk_lat, 0)} / ${this.fmtLatency(d.open_resolver_lat, 0)}`)} |
-                    Probe Avg: ${this.highlight(this.fmtLatency(d.probe_latency_avg, 1))} |
-                    Confidence: ${d.confidence || '-'} |
-                    Obs UDP53/TCP53/ECS/QNAME/Cookies: ${this.highlight(`${d.udp53_probe_timing_source || '-'}:${d.udp53_probe_failure_reason || '-'} / ${d.tcp53_probe_timing_source || '-'}:${d.tcp53_probe_failure_reason || '-'} / ${d.ecs_timing_source || '-'}:${d.ecs_failure_reason || '-'} / ${d.qname_min_timing_source || '-'}:${d.qname_min_failure_reason || '-'} / ${d.cookies_timing_source || '-'}:${d.cookies_failure_reason || '-'}`)} |
-                    Web80/Web443: ${this.highlight(`${(d.web_risk_status && d.web_risk_status['80']) || (d.web_risk_status && d.web_risk_status[80]) || '-'} / ${(d.web_risk_status && d.web_risk_status['443']) || (d.web_risk_status && d.web_risk_status[443]) || '-'}`)} |
-                    Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'version', 'Version')} / ${this.fmtProbeEvidence(d, 'recursion', 'Recursion')} / ${this.fmtProbeEvidence(d, 'dnssec', 'DNSSEC')} / ${this.fmtProbeEvidence(d, 'edns0', 'EDNS0')} / ${this.fmtProbeEvidence(d, 'open_resolver', 'OpenRes')} / ${this.fmtProbeEvidence(d, 'doh_probe', 'DoH')}`)} |
-                    Telemetry: Amp=${this.fmtAmplification(d.udp53_query_size, d.udp53_response_size)} |
-                    Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'udp53_probe', 'UDP53')} / ${this.fmtProbeRepeat(d, 'tcp53_probe', 'TCP53')} / ${this.fmtProbeRepeat(d, 'dot_probe', 'DoT')} / ${this.fmtProbeRepeat(d, 'doh_probe', 'DoH')} / ${this.fmtProbeRepeat(d, 'open_resolver', 'OpenRes')}`)}
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <div class="detail-section-title">Profile & Classification</div>
+                        <div class="detail-kv"><span class="k">Version</span><span class="v">${this.escapeAttr(d.version || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">Open Resolver</span><span class="v">${this.escapeAttr(d.open_resolver || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">Confidence</span><span class="v">${d.confidence || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">DNSSEC Mode</span><span class="v">${this.escapeAttr(d.dnssec_mode || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">QNAME-Min Conf.</span><span class="v">${d.qname_min_confidence || '-'}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Network Latency</div>
+                        <div class="detail-kv"><span class="k">Ping</span><span class="v">${this.fmtLatency(d.latency, 0)} [${this.fmtLatency(d.latency_min, 0)}..${this.fmtLatency(d.latency_max, 0)}]</span></div>
+                        <div class="detail-kv"><span class="k">UDP53</span><span class="v">${this.fmtLatency(d.udp53_probe_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">TCP53 Conn</span><span class="v">${this.fmtLatency(d.port53t_conn_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">TCP53 Probe</span><span class="v">${this.fmtLatency(d.port53t_probe_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Version Lat</span><span class="v">${this.fmtLatency(d.version_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Recursion Lat</span><span class="v">${this.fmtLatency(d.recursion_lat, 0)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Encrypted Transport</div>
+                        <div class="detail-kv"><span class="k">DoT Conn</span><span class="v">${this.fmtLatency(d.port853_conn_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">DoT Probe</span><span class="v">${this.fmtLatency(d.dot_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">DoH Conn</span><span class="v">${this.fmtLatency(d.port443_conn_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">DoH Probe</span><span class="v">${this.fmtLatency(d.doh_lat, 0)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Check Latencies</div>
+                        <div class="detail-kv"><span class="k">DNSSEC</span><span class="v">${this.fmtLatency(d.dnssec_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">EDNS0</span><span class="v">${this.fmtLatency(d.edns0_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">ECS</span><span class="v">${this.fmtLatency(d.ecs_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">QNAME-Min</span><span class="v">${this.fmtLatency(d.qname_min_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Cookies</span><span class="v">${this.fmtLatency(d.cookies_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Open Resolver</span><span class="v">${this.fmtLatency(d.open_resolver_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Web Risk</span><span class="v">${this.fmtLatency(d.web_risk_lat, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Probe Avg</span><span class="v">${this.fmtLatency(d.probe_latency_avg, 1)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Evidence</div>
+                        <div class="detail-kv"><span class="k">Version</span><span class="v">${this.fmtProbeEvidence(d, 'version', 'Ver')}</span></div>
+                        <div class="detail-kv"><span class="k">Recursion</span><span class="v">${this.fmtProbeEvidence(d, 'recursion', 'Rec')}</span></div>
+                        <div class="detail-kv"><span class="k">DNSSEC</span><span class="v">${this.fmtProbeEvidence(d, 'dnssec', 'DNSSEC')}</span></div>
+                        <div class="detail-kv"><span class="k">EDNS0</span><span class="v">${this.fmtProbeEvidence(d, 'edns0', 'EDNS0')}</span></div>
+                        <div class="detail-kv"><span class="k">DoH</span><span class="v">${this.fmtProbeEvidence(d, 'doh_probe', 'DoH')}</span></div>
+                        <div class="detail-kv"><span class="k">Amp</span><span class="v">${this.fmtAmplification(d.udp53_query_size, d.udp53_response_size)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Repeatability</div>
+                        ${repeatProbes.map(pn => `<div class="detail-kv"><span class="k">${pn}</span><span class="v">${this.fmtProbeRepeat(d, pn)}</span></div>`).join('')}
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Observability</div>
+                        ${obsProbes.map(pn => {
+                            const src = d[`${pn}_timing_source`];
+                            const reason = d[`${pn}_failure_reason`];
+                            if (src === undefined && reason === undefined) return '';
+                            return `<div class="detail-kv"><span class="k">${pn}</span><span class="v">${src || '-'}:${reason || '-'}</span></div>`;
+                        }).filter(Boolean).join('')}
+                        <div class="detail-kv"><span class="k">Web80</span><span class="v">${(d.web_risk_status && (d.web_risk_status['80'] || d.web_risk_status[80])) || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">Web443</span><span class="v">${(d.web_risk_status && (d.web_risk_status['443'] || d.web_risk_status[443])) || '-'}</span></div>
+                    </div>
+                </div>
                 </td></tr>`;
             });
             if (!filtered.length) {
@@ -981,58 +1118,85 @@
             ].join('');
 
             let html = `<table><thead><tr>
-                <th>${this.help('Domain', 'Zone Name', 'Zone or domain being checked in Phase 2.')}</th>
-                <th>${this.help('Group', 'Server Group', 'Logical server group associated with this zone check.')}</th>
-                <th>${this.help('Server', 'Server', 'Specific DNS server that answered the zone query.')}</th>
-                <th>${this.help('Status', 'SOA Status', 'Primary SOA query outcome. Non-NOERROR results often limit deeper checks.')}</th>
-                <th>${this.help('Serial', 'SOA Serial', 'Zone version identifier used to compare synchronization across servers.')}</th>
-                <th>${this.help('Lat', 'Latency', 'SOA query latency for this server and domain pair.')}</th>
-                <th>${this.help('Score', 'Zone Score', 'Summarizes synchronization, authority, transfer exposure, DNSSEC signing, and CAA context.')}</th>
-                <th>${this.help('AA', 'Authoritative Answer', 'Indicates whether the authoritative-answer flag was present when expected.')}</th>
-                <th>${this.help('AXFR', 'Zone Transfer', 'Shows whether a zone transfer was refused, exposed, skipped, or unavailable.')}</th>
-                <th>${this.help('Scope', 'Check Scope', 'FULL means the full zone audit ran. SOA_ONLY means follow-up checks were intentionally shortened.')}</th>
-                <th>${this.help('DNSSEC', 'Zone Signing', 'Whether the zone appeared signed from this server perspective.')}</th>
-                <th>${this.help('CAA', 'CAA Records', 'Number of CAA records detected for the zone.')}</th>
-                <th>${this.help('NS Sync', 'NS Consistency', 'Whether NS answers matched across the servers tested for the same zone.')}</th>
-                <th>${this.help('Web Risk', 'Web Exposure', 'Web ports observed on the same host, shown as supporting context.')}</th>
+                <th>${this.help('Domain', 'Zone Name', 'Zone or domain being checked.')}</th>
+                <th>${this.help('Group', 'Server Group', 'Logical server group.')}</th>
+                <th>${this.help('Server', 'Server', 'DNS server that answered.')}</th>
+                <th>${this.help('Status', 'SOA Status', 'SOA query outcome.')}</th>
+                <th>${this.help('Serial', 'SOA Serial', 'Zone version identifier.')}</th>
+                <th>${this.help('Lat', 'Latency', 'SOA query latency.')}</th>
+                <th>${this.help('Score', 'Zone Score', 'Sync + authority + AXFR + DNSSEC + CAA.')}</th>
+                <th>${this.help('AA', 'Authoritative', 'Authoritative answer flag.')}</th>
+                <th>${this.help('AXFR', 'Zone Transfer', 'Transfer exposure status.')}</th>
+                <th>${this.help('Scope', 'Check Scope', 'FULL or SOA_ONLY.')}</th>
+                <th>${this.help('DNSSEC', 'Signing', 'Zone signing status.')}</th>
+                <th>${this.help('CAA', 'CAA', 'CAA record count.')}</th>
+                <th>${this.help('NS Sync', 'NS Consistency', 'NS answers matched across servers.')}</th>
+                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports as context.')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
                 html += `<tr class="${!d.zone_is_synced ? 'anomaly-row' : ''}">
                     <td>${this.highlight(d.domain)}</td><td>${this.highlight(d.group || '-')}</td><td>${this.highlight(d.server)}</td><td>${d.status}</td><td>${d.serial}</td><td>${this.fmtLatency(d.latency, 0)}</td>
-                    <td style="color:${this.getClr(d.zone_score)}">${d.zone_score}</td>
+                    <td style="color:${this.getClr(d.zone_score)}; font-weight:800">${d.zone_score}</td>
                     <td>${d.aa?'OK':'--'}</td><td>${d.axfr_detail}</td><td>${d.check_scope || '-'}</td>
                     <td>${d.dnssec === true ? 'SIGNED' : (d.dnssec === false ? 'UNSIGNED' : 'N/E')}</td>
                     <td>${d.caa_records ? d.caa_records.length : 0}</td>
                     <td>${d.ns_consistent === true ? 'YES' : (d.ns_consistent === false ? 'NO' : 'N/E')}</td>
                     <td>${d.web_risks && d.web_risks.length ? d.web_risks.join(', ') : 'None'}</td>
                 </tr>`;
-                if (d.caa_records && d.caa_records.length > 0) {
-                    html += `<tr class="detail-row"><td colspan="14">
-                        MNAME: ${this.highlight(d.mname || '-')} |
-                        RNAME: ${this.highlight(d.rname || '-')} |
-                        Zone Audit MNAME Reachability: ${this.highlight((d.zone_audit && d.zone_audit.mname_reachable) || '-')} |
-                        Timer Issues: ${this.highlight((d.zone_audit && d.zone_audit.timers_issues && d.zone_audit.timers_issues.length) ? d.zone_audit.timers_issues.join(' | ') : 'None')} |
-                        CAA Records: ${this.highlight(d.caa_records.join(' | '))} |
-                        Timings SOA/Fallback/NS/AXFR/CAA/DNSSEC: ${this.highlight(`${this.fmtLatency(d.soa_latency, 0)} / ${this.fmtLatency(d.soa_fallback_latency, 0)} / ${this.fmtLatency(d.ns_latency, 0)} / ${this.fmtLatency(d.axfr_latency, 0)} / ${this.fmtLatency(d.caa_latency, 0)} / ${this.fmtLatency(d.zone_dnssec_latency, 0)}`)} |
-                        SOA Timers: Ref=${d.soa_timers ? d.soa_timers.refresh : '-'} Ret=${d.soa_timers ? d.soa_timers.retry : '-'} Exp=${d.soa_timers ? d.soa_timers.expire : '-'} Min=${d.soa_timers ? d.soa_timers.min_ttl : '-'} |
-                        Scope: ${this.highlight(`${d.scope_confidence || 'N/A'} / fallback:${d.used_fallback ? 'YES' : 'NO'}`)} |
-                        Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'soa', 'SOA')} / ${this.fmtProbeEvidence(d, 'ns', 'NS')} / ${this.fmtProbeEvidence(d, 'caa', 'CAA')} / ${this.fmtProbeEvidence(d, 'zone_dnssec', 'ZoneDNSSEC')}`)} |
-                        Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'soa', 'SOA')} / ${this.fmtProbeRepeat(d, 'ns', 'NS')}`)}
-                    </td></tr>`;
-                }
-                else {
-                    html += `<tr class="detail-row"><td colspan="14">
-                        MNAME: ${this.highlight(d.mname || '-')} |
-                        RNAME: ${this.highlight(d.rname || '-')} |
-                        Zone Audit MNAME Reachability: ${this.highlight((d.zone_audit && d.zone_audit.mname_reachable) || '-')} |
-                        Timer Issues: ${this.highlight((d.zone_audit && d.zone_audit.timers_issues && d.zone_audit.timers_issues.length) ? d.zone_audit.timers_issues.join(' | ') : 'None')} |
-                        Timings SOA/Fallback/NS/AXFR/CAA/DNSSEC: ${this.highlight(`${this.fmtLatency(d.soa_latency, 0)} / ${this.fmtLatency(d.soa_fallback_latency, 0)} / ${this.fmtLatency(d.ns_latency, 0)} / ${this.fmtLatency(d.axfr_latency, 0)} / ${this.fmtLatency(d.caa_latency, 0)} / ${this.fmtLatency(d.zone_dnssec_latency, 0)}`)} |
-                        SOA Timers: Ref=${d.soa_timers ? d.soa_timers.refresh : '-'} Ret=${d.soa_timers ? d.soa_timers.retry : '-'} Exp=${d.soa_timers ? d.soa_timers.expire : '-'} Min=${d.soa_timers ? d.soa_timers.min_ttl : '-'} |
-                        Scope: ${this.highlight(`${d.scope_confidence || 'N/A'} / fallback:${d.used_fallback ? 'YES' : 'NO'}`)} |
-                        Evidence: ${this.highlight(`${this.fmtProbeEvidence(d, 'soa', 'SOA')} / ${this.fmtProbeEvidence(d, 'ns', 'NS')} / ${this.fmtProbeEvidence(d, 'caa', 'CAA')} / ${this.fmtProbeEvidence(d, 'zone_dnssec', 'ZoneDNSSEC')}`)} |
-                        Repeatability: ${this.highlight(`${this.fmtProbeRepeat(d, 'soa', 'SOA')} / ${this.fmtProbeRepeat(d, 'ns', 'NS')}`)}
-                    </td></tr>`;
-                }
+                // Detail row with structured sub-sections (single block for all zones)
+                const timers = d.soa_timers || {};
+                const audit = d.zone_audit || {};
+                html += `<tr class="detail-row"><td colspan="14">
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <div class="detail-section-title">Zone Identity</div>
+                        <div class="detail-kv"><span class="k">Domain Parent</span><span class="v">${this.escapeAttr(d.domain_parent || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">MNAME</span><span class="v">${this.escapeAttr(d.mname || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">RNAME</span><span class="v">${this.escapeAttr(d.rname || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">MNAME Reach.</span><span class="v">${this.escapeAttr(audit.mname_reachable || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">NS List</span><span class="v">${this.escapeAttr(Array.isArray(d.ns_list) ? d.ns_list.join(', ') : (d.ns_list || '-'))}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">SOA Timers</div>
+                        <div class="detail-kv"><span class="k">Refresh</span><span class="v">${timers.refresh || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">Retry</span><span class="v">${timers.retry || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">Expire</span><span class="v">${timers.expire || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">Min TTL</span><span class="v">${timers.min_ttl || '-'}</span></div>
+                        <div class="detail-kv"><span class="k">RFC Status</span><span class="v">${audit.timers_ok === false ? '<span style="color:var(--danger)">FAIL</span>' : '<span style="color:var(--success)">OK</span>'}</span></div>
+                        ${audit.timers_issues && audit.timers_issues.length ? `<div class="detail-kv"><span class="k">Issues</span><span class="v" style="color:var(--warning)">${this.escapeAttr(audit.timers_issues.join('; '))}</span></div>` : ''}
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Network Latency</div>
+                        <div class="detail-kv"><span class="k">Ping</span><span class="v">${this.fmtLatency(d.ping_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">SOA UDP</span><span class="v">${this.fmtLatency(d.soa_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">SOA Fallback</span><span class="v">${this.fmtLatency(d.soa_fallback_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">NS UDP</span><span class="v">${this.fmtLatency(d.ns_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">AXFR</span><span class="v">${this.fmtLatency(d.axfr_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">CAA</span><span class="v">${this.fmtLatency(d.caa_latency, 0)}</span></div>
+                        <div class="detail-kv"><span class="k">Zone DNSSEC</span><span class="v">${this.fmtLatency(d.zone_dnssec_latency, 0)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Scope & Audit</div>
+                        <div class="detail-kv"><span class="k">Scope Confidence</span><span class="v">${d.scope_confidence || 'N/A'}</span></div>
+                        <div class="detail-kv"><span class="k">Used Fallback</span><span class="v">${d.used_fallback ? 'YES' : 'NO'}</span></div>
+                        <div class="detail-kv"><span class="k">Glue OK</span><span class="v">${audit.glue_ok === true ? 'YES' : (audit.glue_ok === false ? 'NO' : 'N/E')}</span></div>
+                        <div class="detail-kv"><span class="k">Web Risk</span><span class="v">${audit.web_risk ? '<span style="color:var(--danger)">EXPOSED</span>' : '<span style="color:var(--success)">SAFE</span>'}</span></div>
+                        ${d.caa_records && d.caa_records.length ? `<div class="detail-kv"><span class="k">CAA Records</span><span class="v">${this.escapeAttr(d.caa_records.join(' | '))}</span></div>` : ''}
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Evidence</div>
+                        <div class="detail-kv"><span class="k">SOA</span><span class="v">${this.fmtProbeEvidence(d, 'soa', 'SOA')}</span></div>
+                        <div class="detail-kv"><span class="k">NS</span><span class="v">${this.fmtProbeEvidence(d, 'ns', 'NS')}</span></div>
+                        <div class="detail-kv"><span class="k">CAA</span><span class="v">${this.fmtProbeEvidence(d, 'caa', 'CAA')}</span></div>
+                        <div class="detail-kv"><span class="k">Zone DNSSEC</span><span class="v">${this.fmtProbeEvidence(d, 'zone_dnssec', 'DNSSEC')}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Repeatability</div>
+                        <div class="detail-kv"><span class="k">SOA</span><span class="v">${this.fmtProbeRepeat(d, 'soa', 'SOA')}</span></div>
+                        <div class="detail-kv"><span class="k">NS</span><span class="v">${this.fmtProbeRepeat(d, 'ns', 'NS')}</span></div>
+                    </div>
+                </div>
+                </td></tr>`;
             });
             if (!filtered.length) {
                 html += this.renderEmptyTable(14, this.filter ? `No zone rows match "${this.filter}".` : 'No zone rows available.');
@@ -1054,19 +1218,19 @@
             ].join('');
 
             let html = `<table><thead><tr>
-                <th>${this.help('Domain', 'Query Target', 'Record owner name or domain queried in Phase 3.')}</th>
-                <th>${this.help('Group', 'Server Group', 'Logical server group used for this record query.')}</th>
-                <th>${this.help('Server', 'Server', 'Specific DNS server that answered the query.')}</th>
-                <th>${this.help('Type', 'Record Type', 'Record type requested, such as A, AAAA, MX, TXT, or SOA.')}</th>
-                <th>${this.help('Status', 'DNS Status', 'Primary response code returned by the query.')}</th>
-                <th>${this.help('Lat', 'Latency', 'Response time for the representative query shown in this row.')}</th>
-                <th>${this.help('Sync', 'Consistency Marker', 'OK means repeated checks matched. DIV! means the repeated checks diverged.')}</th>
-                <th>${this.help('Ping', 'Server Reachability', 'Phase 1 ping status reused as context for this answer.')}</th>
-                <th>${this.help('Recursion', 'Recursion Status', 'Phase 1 recursion behavior reused to interpret the record answer context.')}</th>
-                <th>${this.help('DoT', 'DNS over TLS', 'Phase 1 encrypted DNS capability marker.')}</th>
-                <th>${this.help('DoH', 'DNS over HTTPS', 'Phase 1 encrypted DNS capability marker.')}</th>
-                <th>${this.help('NSID', 'Name Server Identifier', 'Optional EDNS NSID value returned by the server when available.')}</th>
-                <th>${this.help('Wildcard', 'Wildcard Detection', 'Indicates whether random subdomains also resolved for this zone/server pair, suggesting zone-level wildcard behavior.')}</th>
+                <th>${this.help('Domain', 'Query Target', 'Record owner or domain queried.')}</th>
+                <th>${this.help('Group', 'Server Group', 'Logical server group.')}</th>
+                <th>${this.help('Server', 'Server', 'DNS server that answered.')}</th>
+                <th>${this.help('Type', 'Record Type', 'A, AAAA, MX, TXT, SOA, CNAME, NS, etc.')}</th>
+                <th>${this.help('Status', 'DNS Status', 'Response code: NOERROR, NXDOMAIN, FAIL.')}</th>
+                <th>${this.help('Lat', 'Latency', 'Response time for representative query.')}</th>
+                <th>${this.help('Sync', 'Consistency', 'OK=matched, DIV!=diverged.')}</th>
+                <th>${this.help('Ping', 'Reach', 'Phase 1 ping status.')}</th>
+                <th>${this.help('Rec', 'Recursion', 'Phase 1 recursion status.')}</th>
+                <th>${this.help('DoT', 'DoT', 'Phase 1 DoT capability.')}</th>
+                <th>${this.help('DoH', 'DoH', 'Phase 1 DoH capability.')}</th>
+                <th>${this.help('NSID', 'NSID', 'Name Server ID (EDNS).')}</th>
+                <th>${this.help('WC', 'Wildcard', 'Wildcard resolution detected.')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
                 html += `<tr class="${d.internally_consistent==='DIV!'?'anomaly-row':''}">
@@ -1075,22 +1239,54 @@
                     <td>${this.fmtLatency(d.latency, 1)}</td><td>${d.internally_consistent}</td>
                     <td>${d.ping || '-'}</td><td>${d.recursion || '-'}</td><td>${d.dot || '-'}</td><td>${d.doh || '-'}</td><td>${d.nsid || '-'}</td><td>${d.wildcard_detected ? 'YES' : 'NO'}</td>
                 </tr>`;
+                // Detail row with structured sub-sections
                 html += `<tr class="detail-row"><td colspan="13">
-                    Domain Parent: ${this.highlight(d.domain_parent || '-')} |
-                    Answers: ${this.highlight(d.answers || '-')} |
-                    Wildcard Answers: ${this.highlight((d.wildcard_answers && d.wildcard_answers.length) ? d.wildcard_answers.join(' | ') : '-')} |
-                    Telemetry: AD Flag: <b>${d.ad ? 'AD+' : 'AD-'}</b> | Amplification: <b>${this.fmtAmplification(d.query_size, d.response_size)}</b> | NSID: ${this.highlight(d.nsid || '-')} |
-                    Timings First/Avg/Min/Max: ${this.highlight(`${this.fmtLatency(d.latency_first, 1)} / ${this.fmtLatency(d.latency_avg, 1)} / ${this.fmtLatency(d.latency_min, 1)} / ${this.fmtLatency(d.latency_max, 1)}`)} |
-                    Jitter: ${this.highlight(this.fmtLatency(d.latency_jitter, 1))} |
-                    Chain Depth: ${d.chain_depth || 0} |
-                    Chain/MX25/Wildcard: ${this.highlight(`${this.fmtLatency(d.chain_latency, 1)} / ${this.fmtLatency(d.mx_port25_latency, 1)} / ${this.fmtLatency(d.wildcard_latency, 1)}`)} |
-                    Evidence: ${this.highlight(this.fmtProbeEvidence(d, 'main', 'Main'))}
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <div class="detail-section-title">Query & Response</div>
+                        <div class="detail-kv"><span class="k">Domain Parent</span><span class="v">${this.escapeAttr(d.domain_parent || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">Answers</span><span class="v">${this.escapeAttr(d.answers || '-')}</span></div>
+                        <div class="detail-kv"><span class="k">AD Flag</span><span class="v">${d.ad ? '<span style="color:var(--success)">AD+</span>' : '<span style="color:var(--text-secondary)">AD-</span>'}</span></div>
+                        <div class="detail-kv"><span class="k">NSID</span><span class="v">${this.escapeAttr(d.nsid || '-')}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Latency Profile</div>
+                        <div class="detail-kv"><span class="k">First</span><span class="v">${this.fmtLatency(d.latency_first, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Average</span><span class="v">${this.fmtLatency(d.latency_avg, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Min</span><span class="v">${this.fmtLatency(d.latency_min, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Max</span><span class="v">${this.fmtLatency(d.latency_max, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Jitter</span><span class="v">${this.fmtLatency(d.latency_jitter, 1)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Network & Chain</div>
+                        <div class="detail-kv"><span class="k">Ping</span><span class="v">${this.fmtLatency(d.ping_latency, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Chain Latency</span><span class="v">${this.fmtLatency(d.chain_latency, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">Chain Depth</span><span class="v">${d.chain_depth || 0}</span></div>
+                        <div class="detail-kv"><span class="k">MX Port25</span><span class="v">${this.fmtLatency(d.mx_port25_latency, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">DoT Latency</span><span class="v">${this.fmtLatency(d.dot_latency, 1)}</span></div>
+                        <div class="detail-kv"><span class="k">DoH Latency</span><span class="v">${this.fmtLatency(d.doh_latency, 1)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Telemetry</div>
+                        <div class="detail-kv"><span class="k">Query Size</span><span class="v">${d.query_size || '-'} B</span></div>
+                        <div class="detail-kv"><span class="k">Response Size</span><span class="v">${d.response_size || '-'} B</span></div>
+                        <div class="detail-kv"><span class="k">Amplification</span><span class="v">${this.fmtAmplification(d.query_size, d.response_size)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Wildcard</div>
+                        <div class="detail-kv"><span class="k">Detected</span><span class="v">${d.wildcard_detected ? '<span style="color:var(--danger)">YES</span>' : '<span style="color:var(--success)">NO</span>'}</span></div>
+                        ${d.wildcard_answers && d.wildcard_answers.length ? `<div class="detail-kv"><span class="k">Answers</span><span class="v">${this.escapeAttr(d.wildcard_answers.join(' | '))}</span></div>` : ''}
+                        <div class="detail-kv"><span class="k">WC Latency</span><span class="v">${this.fmtLatency(d.wildcard_latency, 1)}</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">Evidence</div>
+                        <div class="detail-kv"><span class="k">Main</span><span class="v">${this.fmtProbeEvidence(d, 'main', 'Main')}</span></div>
+                    </div>
+                </div>
+                ${d.findings && d.findings.length ? `<div style="margin-top:8px; padding-top:6px; border-top:1px solid var(--border)">
+                    ${d.findings.map(f => `<div style="font-size:11px; margin-bottom:3px"><span style="color:var(--warning)">!</span> ${this.escapeAttr(f)}</div>`).join('')}
+                </div>` : ''}
                 </td></tr>`;
-                if (d.findings && d.findings.length > 0) {
-                    html += `<tr class="detail-row"><td colspan="13">
-                        ${d.findings.map(f => `↳ <span style="color:var(--warning)">!</span> ${this.highlight(f)}`).join('<br>')}
-                    </td></tr>`;
-                }
             });
             if (!filtered.length) {
                 html += this.renderEmptyTable(13, this.filter ? `No record rows match "${this.filter}".` : 'No record rows available.');
