@@ -483,4 +483,55 @@ class Reporter:
 
         add_section("Phase 3: Records", record_rows)
 
+        # ── Advanced Analytics (cross-phase, ranking, health index, coverage) ─
+        adv = analytics.get("server_health_index")
+        if adv:
+            add_section("Advanced: Server Health Index", [
+                f"  {srv:15} | Score={d['total']:3d} | Infra={d['infra_score']:3d} | Zones={d['zone_avg']:5.1f} | Records={d['record_consistency']:5.1f} | Issues={fmt_val(d.get('issues', []))}"
+                for srv, d in sorted(adv.items(), key=lambda x: x[1]["total"])
+            ])
+
+        wb = analytics.get("worst_best_servers")
+        if wb:
+            worst_rows = []
+            if wb.get("worst"):
+                worst_rows.append("  WORST SERVERS:")
+                for s in wb["worst"]:
+                    worst_rows.append(f"    #{s['server']:15} Score={s['total']:3d} Issues={fmt_val(s.get('issues', []))}")
+            if wb.get("best"):
+                worst_rows.append("  BEST SERVERS:")
+                for s in wb["best"]:
+                    worst_rows.append(f"    #{s['server']:15} Score={s['total']:3d} Issues={fmt_val(s.get('issues', []))}")
+            if wb.get("dead_count"):
+                worst_rows.append(f"  DEAD: {wb['dead_count']} server(s)")
+            add_section("Advanced: Worst & Best Servers", worst_rows)
+
+        cross = analytics.get("cross_phase_correlations")
+        if cross:
+            add_section("Advanced: Cross-Phase Correlations", [
+                f"  [{c['pattern'].upper():8}] {c['server']:15} infra={fmt_val(c['infra'])} zones={fmt_val(c['zones'])} records={fmt_val(c['records'])}"
+                for c in cross[:15]
+            ])
+
+        problems = analytics.get("problem_ranking")
+        if problems:
+            add_section("Advanced: Problem Ranking", [
+                f"  [{p['severity']:2d}] {p['category']:8} {p['subject']:40} {p['detail']}"
+                for p in problems[:20]
+            ])
+
+        cov = analytics.get("coverage_reliability")
+        if cov:
+            cov_rows = []
+            cov_rows.append(f"  Phase 1 (sample={cov.get('phase1_sample_size', '?')}):")
+            for k, v in cov.get("phase1", {}).items():
+                cov_rows.append(f"    {k}: {v}")
+            cov_rows.append(f"  Phase 2:")
+            for k, v in cov.get("phase2", {}).items():
+                cov_rows.append(f"    {k}: {v}")
+            cov_rows.append(f"  Phase 3:")
+            for k, v in cov.get("phase3", {}).items():
+                cov_rows.append(f"    {k}: {v}")
+            add_section("Advanced: Coverage Reliability", cov_rows)
+
         return "\n".join(lines) + "\n"

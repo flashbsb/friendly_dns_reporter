@@ -264,6 +264,8 @@
 
     <section class="phase-strip" id="phase-strip" style="display:none"></section>
 
+    <section class="phase-strip" id="advanced-strip" style="display:none"></section>
+
     <div id="details-view" style="display:none">
         <div class="forensic-panel">
             <div class="panel-header" onclick="dataManager.toggleSection('p1')">
@@ -498,6 +500,7 @@
             this.renderRadar();
             this.renderActionSummary();
             this.renderPhaseSummary();
+            this.renderAdvanced();
             this.renderDetails();
             document.getElementById('help-panel').style.display = 'block';
             document.getElementById('phase-strip').style.display = 'grid';
@@ -813,6 +816,74 @@
         applyFilter(v) { this.filter = v.toLowerCase(); this.renderAll(); },
         getClr(s) { return s >= 90 ? 'var(--success)' : (s >= 70 ? 'var(--warning)' : 'var(--danger)'); },
         highlight(t) { return this.filter ? String(t).replace(new RegExp(`(${this.filter})`, 'gi'), '<span class="text-match">$1</span>') : t; },
+
+        renderAdvanced() {
+            const analytics = dataManager.current.analytics || {};
+            const wb = analytics.worst_best_servers || {};
+            const worst = wb.worst || [];
+            const best = wb.best || [];
+            const cross = analytics.cross_phase_correlations || [];
+            const problems = analytics.problem_ranking || [];
+            const cov = analytics.coverage_reliability || {};
+
+            if (!worst.length && !best.length && !cross.length && !problems.length) {
+                document.getElementById('advanced-strip').style.display = 'none';
+                return;
+            }
+
+            let html = '';
+
+            // Worst / Best servers
+            if (worst.length || best.length) {
+                html += `<div class="phase-card" style="grid-column: 1 / -1">
+                    <h3>Server Health Rankings</h3>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px">
+                        <div>
+                            <div style="font-size:10px; color:var(--danger); text-transform:uppercase; margin-bottom:8px">Worst Servers</div>
+                            ${worst.map((s,i) => `<div style="font-size:12px; margin-bottom:4px; color:var(--text-primary)">
+                                <b>${i+1}.</b> ${this.escapeAttr(s.server)} — <span style="color:${this.getClr(s.total)}">${s.total}/100</span> <span style="color:var(--text-secondary)">${(s.issues||[]).join(', ')}</span>
+                            </div>`).join('')}
+                        </div>
+                        <div>
+                            <div style="font-size:10px; color:var(--success); text-transform:uppercase; margin-bottom:8px">Best Servers</div>
+                            ${best.map((s,i) => `<div style="font-size:12px; margin-bottom:4px; color:var(--text-primary)">
+                                <b>${i+1}.</b> ${this.escapeAttr(s.server)} — <span style="color:${this.getClr(s.total)}">${s.total}/100</span> <span style="color:var(--text-secondary)">${(s.issues||[]).join(', ')}</span>
+                            </div>`).join('')}
+                        </div>
+                    </div>
+                    ${wb.dead_count ? `<div style="font-size:11px; color:var(--danger); margin-top:8px">${wb.dead_count} dead server(s) scored 0</div>` : ''}
+                </div>`;
+            }
+
+            // Cross-phase
+            if (cross.length) {
+                html += `<div class="phase-card">
+                    <h3>Cross-Phase Correlations</h3>
+                    ${cross.slice(0, 5).map(c => {
+                        const clr = c.pattern === 'degraded' ? 'var(--danger)' : 'var(--warning)';
+                        return `<div style="font-size:12px; margin-bottom:6px; color:var(--text-primary)">
+                            <span style="color:${clr}">[${c.pattern.toUpperCase()}]</span> ${this.escapeAttr(c.server)} — infra:${c.infra.length} zone:${c.zones.length} rec:${c.records.length} flags
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            // Problem ranking
+            if (problems.length) {
+                html += `<div class="phase-card">
+                    <h3>Top Problems by Severity</h3>
+                    ${problems.slice(0, 8).map(p => {
+                        const clr = p.severity >= 7 ? 'var(--danger)' : (p.severity >= 5 ? 'var(--warning)' : 'var(--info)');
+                        return `<div style="font-size:12px; margin-bottom:6px; color:var(--text-primary)">
+                            <span style="color:${clr}">[${p.severity}] ${p.category}</span> ${this.escapeAttr(p.subject)} — ${this.escapeAttr(p.detail)}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+
+            document.getElementById('advanced-strip').innerHTML = html;
+            document.getElementById('advanced-strip').style.display = 'grid';
+        },
 
         renderDetails() {
             this.renderP1();

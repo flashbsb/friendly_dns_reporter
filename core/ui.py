@@ -842,3 +842,66 @@ def print_legend_summary():
         f"{INFO}PRIVACY SCORE {RESET} : DoT, DoH, QNAME-Min, ECS Masking.",
         f"{INFO}GRADING SYSTEM{RESET} : {OK}A/A+(90+){RESET} | {WARN}C/D(60-80){RESET} | {FAIL}F(<60){RESET}."
     ])
+
+
+def print_advanced_analytics(advanced):
+    """Print the consolidated advanced analytics to terminal."""
+    width = 80
+
+    # Worst & Best Servers
+    wb = advanced.get("worst_best_servers", {})
+    worst = wb.get("worst", [])
+    best = wb.get("best", [])
+    if worst or best:
+        print(f"\n  {BOLD}ADVANCED ANALYTICS: SERVER RANKINGS{RESET}")
+        print(f"  {'═' * width}")
+
+        if worst:
+            print(f"  {FAIL}WORST SERVERS:{RESET}")
+            for i, s in enumerate(worst):
+                score_clr = get_score_color(s['total'])
+                issues = ", ".join(s.get("issues", []))
+                print(f"    {i+1}. {s['server']:15} Score={score_clr}{s['total']}{RESET} | Infra={s['infra_score']} | Zones={s['zone_avg']} | Records={s['record_consistency']} | {WARN}{issues}{RESET}")
+
+        if best:
+            print(f"\n  {OK}BEST SERVERS:{RESET}")
+            for i, s in enumerate(best):
+                score_clr = get_score_color(s['total'])
+                issues = ", ".join(s.get("issues", []))
+                print(f"    {i+1}. {s['server']:15} Score={score_clr}{s['total']}{RESET} | Infra={s['infra_score']} | Zones={s['zone_avg']} | Records={s['record_consistency']} | {OK}{issues}{RESET}")
+
+        dead = wb.get("dead_count", 0)
+        if dead:
+            print(f"\n  {FAIL}DEAD: {dead} server(s) scored 0{RESET}")
+
+    # Cross-Phase Correlations
+    cross = advanced.get("cross_phase_correlations", [])
+    if cross:
+        print(f"\n  {BOLD}CROSS-PHASE CORRELATIONS{RESET}")
+        print(f"  {'─' * width}")
+        for c in cross[:10]:
+            pattern_clr = FAIL if c['pattern'] == "degraded" else WARN
+            print(f"    {pattern_clr}[{c['pattern'].upper():8}]{RESET} {c['server']:15} infra={len(c['infra'])} flags | zones={len(c['zones'])} flags | records={len(c['records'])} flags")
+
+    # Problem Ranking
+    problems = advanced.get("problem_ranking", [])
+    if problems:
+        print(f"\n  {BOLD}TOP PROBLEMS BY SEVERITY{RESET}")
+        print(f"  {'─' * width}")
+        for p in problems[:10]:
+            sev_clr = FAIL if p['severity'] >= 7 else (WARN if p['severity'] >= 5 else INFO)
+            print(f"    {sev_clr}[{p['severity']:2d}] {p['category']:8}{RESET} {p['subject']:40} {p['detail']}")
+
+    # Coverage
+    cov = advanced.get("coverage_reliability", {})
+    if cov:
+        print(f"\n  {BOLD}COVERAGE RELIABILITY{RESET}")
+        print(f"  {'─' * width}")
+        for k, v in cov.get("phase1", {}).items():
+            print(f"    Phase1 {k:15}: {v}")
+        p2 = cov.get("phase2", {})
+        for k, v in p2.items():
+            print(f"    Phase2 {k:15}: {v}")
+        p3 = cov.get("phase3", {})
+        for k, v in p3.items():
+            print(f"    Phase3 {k:15}: {v}")

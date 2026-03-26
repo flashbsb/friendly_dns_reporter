@@ -2127,6 +2127,217 @@ def build_terminal_takeaways(infra_results, zone_results, results, security_avai
         takeaways.append("No immediate high-priority issue was surfaced in this execution.")
     return takeaways
 
+
+def analyze_server_health_index(infra_results, zone_results, record_results, settings):
+    """Calculate a consolidated 0-100 health index per server combining infra + zones + records."""
+    server_health = {}
+    for srv, data in infra_results.items():
+        if data.get("is_dead"):
+            server_health[srv] = {
+                "total": 0, "infra_score": 0, "zone_avg": 0, "record_consistency": 0,
+                "alive": False, "issues": ["DEAD"]
+            }
+            continue
+
+        issues = []
+        infra_score = data.get("infrastructure_score", 0) or 0
+
+        # Zone score average for this server
+        srv_zones = [z for z in zone_results if z.get("server") == srv and not z.get("is_dead")]
+        zone_scores = [z.get("zone_score", 0) for z in srv_zones]
+        zone_avg = sum(zone_scores) / len(zone_scores) if zone_scores else 0
+
+        # Record consistency for this server
+        srv_records = [r for r in record_results if r.get("server") == srv]
+        rec_total = len(srv_records)
+        rec_consistent = sum(1 for r in srv_records if r.get("is_consistent") is True)
+        rec_pct = (rec_consistent / rec_total * 100) if rec_total > 0 else 0
+
+        # Detect issues
+        if data.get("resolver_exposed"): issues.append("PUBLIC_RESOLVER")
+        if data.get("ping") != "OK" and data.get("latency") is not None: issues.append("PING_FAIL")
+        if any(z.get("axfr_vulnerable") for z in srv_zones): issues.append("AXFR_EXPOSED")
+        if any(z.get("zone_is_synced") is False for z in srv_zones): issues.append("ZONE_DESYNC")
+        if any(not r.get("is_consistent") for r in srv_records): issues.append("RECORD_DIV")
+
+        # Weighted consolidation: 50% infra, 30% zones, 20% records
+        total = int(infra_score * 0.50 + zone_avg * 0.30 + rec_pct * 0.20)
+
+        server_health[srv] = {
+            "total": min(total, 100),
+            "infra_score": infra_score,
+            "zone_avg": round(zone_avg, 1),
+            "record_consistency": round(rec_pct, 1),
+            "alive": True,
+            "issues": issues if issues else ["NONE"]
+        }
+    return server_health
+
+
+def analyze_cross_phase_correlation(infra_results, zone_results, record_results):
+    """Find cross-phase patterns: server degradation across phases."""
+    correlations = []
+    for srv, data in infra_results.items():
+        if data.get("is_dead"):
+            continue
+
+        infra_flags = []
+        if data.get("resolver_exposed"): infra_flags.append("exposed")
+        if data.get("ping") != "OK": infra_flags.append("ping_fail")
+        if data.get("port53u_serv") != "OK": infra_flags.append("udp_fail")
+        if data.get("port53t_serv") != "OK": infra_flags.append("tcp_fail")
+
+        zone_flags = []
+        srv_zones = [z for z in zone_results if z.get("server") == srv]
+        if any(z.get("axfr_vulnerable") for z in srv_zones): zone_flags.append("axfr_exposed")
+        if any(z.get("zone_is_synced") is False for z in srv_zones): zone_flags.append("desync")
+        if any(not z.get("aa") for z in srv_zones if z.get("status") == "NOERROR"): zone_flags.append("lame")
+
+        record_flags = []
+        srv_records = [r for r in record_results if r.get("server") == srv]
+        div_count = sum(1 for r in srv_records if not r.get("is_consistent"))
+        if div_count > 0: record_flags.append(f"div:{div_count}")
+        finding_count = sum(len(r.get("findings", [])) for r in srv_records)
+        if finding_count > 0: record_flags.append(f"findings:{finding_count}")
+        wc_count = sum(1 for r in srv_records if r.get("wildcard_detected"))
+        if wc_count > 0: record_flags.append(f"wildcard:{wc_count}")
+
+        total_flags = len(infra_flags) + len(zone_flags) + len(record_flags)
+        if total_flags >= 2:
+            correlations.append({
+                "server": srv,
+                "infra": infra_flags,
+                "zones": zone_flags,
+                "records": record_flags,
+                "severity": total_flags,
+                "pattern": "degraded" if total_flags >= 4 else ("stressed" if total_flags >= 2 else "nominal")
+            })
+
+    correlations.sort(key=lambda x: x["severity"], reverse=True)
+    return correlations
+
+
+def analyze_problem_ranking(zone_results, record_results, infra_results):
+    """Rank all problems by severity for prioritized action."""
+    problems = []
+
+    # Critical: Public resolver
+    for srv, data in infra_results.items():
+        if data.get("resolver_exposed") is True:
+            problems.append({"severity": 10, "category": "CRITICAL", "subject": srv, "detail": "Public recursion exposure"})
+
+    # Critical: AXFR exposed
+    for z in zone_results:
+        if z.get("axfr_vulnerable"):
+            problems.append({"severity": 9, "category": "CRITICAL", "subject": f"{z.get('domain')} @ {z.get('server')}", "detail": f"Zone transfer exposed ({z.get('axfr_detail', '')})"})
+
+    # High: Zone desync
+    for z in zone_results:
+        if z.get("zone_is_synced") is False and z.get("status") == "NOERROR":
+            problems.append({"severity": 7, "category": "HIGH", "subject": f"{z.get('domain')} @ {z.get('server')}", "detail": f"Serial desync: {z.get('serial', '?')}"})
+
+    # High: Record divergence
+    for r in record_results:
+        if not r.get("is_consistent") and r.get("status") == "NOERROR":
+            problems.append({"severity": 6, "category": "HIGH", "subject": f"{r.get('domain')} [{r.get('type')}] @ {r.get('server')}", "detail": "Repeated queries diverged"})
+
+    # Medium: Wildcard detected
+    seen_wc = set()
+    for r in record_results:
+        if r.get("wildcard_detected"):
+            key = (r.get("domain"), r.get("server"))
+            if key not in seen_wc:
+                seen_wc.add(key)
+                problems.append({"severity": 5, "category": "MEDIUM", "subject": f"{key[0]} @ {key[1]}", "detail": "Wildcard resolution detected"})
+
+    # Medium: Semantic findings
+    for r in record_results:
+        for f in r.get("findings", []):
+            if "DANGLING" in f.upper() or "PERMISSIVE" in f.upper() or "UNREACHABLE" in f.upper():
+                problems.append({"severity": 5, "category": "MEDIUM", "subject": f"{r.get('domain')} [{r.get('type')}] @ {r.get('server')}", "detail": f})
+                break  # one per record to avoid noise
+
+    # Low: Lame delegation
+    for z in zone_results:
+        if not z.get("aa") and z.get("status") == "NOERROR":
+            problems.append({"severity": 3, "category": "LOW", "subject": f"{z.get('domain')} @ {z.get('server')}", "detail": "Authoritative answer flag missing"})
+
+    problems.sort(key=lambda x: x["severity"], reverse=True)
+    return problems[:30]  # top 30
+
+
+def analyze_worst_best_servers(server_health):
+    """Return top-5 worst and top-5 best servers by health index."""
+    alive = {k: v for k, v in server_health.items() if v.get("alive")}
+    dead = {k: v for k, v in server_health.items() if not v.get("alive")}
+    sorted_srvs = sorted(alive.items(), key=lambda x: x[1]["total"])
+    worst = [{"server": s, **d} for s, d in sorted_srvs[:5]]
+    best = [{"server": s, **d} for s, d in sorted_srvs[-5:]]
+    best.reverse()
+    return {"worst": worst, "best": best, "dead_count": len(dead)}
+
+
+def analyze_coverage_reliability(infra_results, zone_results, record_results, settings):
+    """Analyze how many checks were actually measured vs N/A/skipped."""
+    infra_alive = [d for d in infra_results.values() if not d.get("is_dead")]
+    infra_total = len(infra_alive) if infra_alive else 1
+
+    # Phase 1 coverage
+    p1_checks = {"ping": 0, "udp53": 0, "tcp53": 0, "dot": 0, "doh": 0, "dnssec": 0, "open_resolver": 0}
+    for d in infra_alive:
+        if d.get("latency") is not None: p1_checks["ping"] += 1
+        if d.get("udp53_probe_lat") is not None: p1_checks["udp53"] += 1
+        if d.get("port53t_probe_lat") is not None: p1_checks["tcp53"] += 1
+        if d.get("dot_lat") is not None: p1_checks["dot"] += 1
+        if d.get("doh_lat") is not None: p1_checks["doh"] += 1
+        if d.get("dnssec_lat") is not None: p1_checks["dnssec"] += 1
+        if d.get("open_resolver_lat") is not None: p1_checks["open_resolver"] += 1
+    p1_coverage = {k: f"{v}/{infra_total} ({v/infra_total*100:.0f}%)" for k, v in p1_checks.items()}
+
+    # Phase 2 coverage
+    zone_total = len(zone_results) if zone_results else 1
+    p2_full = sum(1 for z in zone_results if z.get("check_scope") == "FULL")
+    p2_soa_only = sum(1 for z in zone_results if z.get("check_scope") == "SOA_ONLY")
+    p2_timers = sum(1 for z in zone_results if z.get("soa_timers") is not None)
+
+    # Phase 3 coverage
+    rec_total = len(record_results) if record_results else 1
+    rec_ok = sum(1 for r in record_results if r.get("status") == "NOERROR")
+    rec_measured = sum(1 for r in record_results if r.get("latency") is not None)
+
+    return {
+        "phase1": p1_coverage,
+        "phase1_sample_size": infra_total,
+        "phase2": {
+            "total_checks": zone_total,
+            "full_scope": f"{p2_full}/{zone_total} ({p2_full/zone_total*100:.0f}%)",
+            "soa_only": f"{p2_soa_only}/{zone_total} ({p2_soa_only/zone_total*100:.0f}%)",
+            "timers_extracted": f"{p2_timers}/{zone_total} ({p2_timers/zone_total*100:.0f}%)"
+        },
+        "phase3": {
+            "total_queries": rec_total,
+            "successful": f"{rec_ok}/{rec_total} ({rec_ok/rec_total*100:.0f}%)",
+            "measured_latency": f"{rec_measured}/{rec_total} ({rec_measured/rec_total*100:.0f}%)"
+        }
+    }
+
+
+def analyze_advanced_analytics(infra_results, zone_results, record_results, settings):
+    """Master function: run all advanced analytics and return a consolidated dict."""
+    server_health = analyze_server_health_index(infra_results, zone_results, record_results, settings)
+    cross_phase = analyze_cross_phase_correlation(infra_results, zone_results, record_results)
+    problem_ranking = analyze_problem_ranking(zone_results, record_results, infra_results)
+    worst_best = analyze_worst_best_servers(server_health)
+    coverage = analyze_coverage_reliability(infra_results, zone_results, record_results, settings)
+
+    return {
+        "server_health_index": server_health,
+        "cross_phase_correlations": cross_phase,
+        "problem_ranking": problem_ranking,
+        "worst_best_servers": worst_best,
+        "coverage_reliability": coverage
+    }
+
 def main():
     script_start_time = time.time()
     settings = Settings()
@@ -2298,6 +2509,7 @@ def main():
     
     # Prepare terminal-style takeaways and breakdown early for reporting
     takeaways = build_terminal_takeaways(infra_cache, zone_results, results, security_available, privacy_available)
+    advanced = analyze_advanced_analytics(infra_cache, zone_results, results, settings)
     
     report_data = {
         "metadata": {
@@ -2321,7 +2533,12 @@ def main():
             "phase2_zones": p2_insights,
             "phase3_records": p3_insights,
             "score_breakdown": score_breakdown,
-            "takeaways": takeaways
+            "takeaways": takeaways,
+            "server_health_index": advanced["server_health_index"],
+            "cross_phase_correlations": advanced["cross_phase_correlations"],
+            "problem_ranking": advanced["problem_ranking"],
+            "worst_best_servers": advanced["worst_best_servers"],
+            "coverage_reliability": advanced["coverage_reliability"]
         },
         "snapshots": {
             "phase1": [
@@ -2449,6 +2666,8 @@ def main():
         takeaways=takeaways,
         score_breakdown=score_breakdown
     )
+
+    ui.print_advanced_analytics(advanced)
 
 if __name__ == "__main__":
     main()
