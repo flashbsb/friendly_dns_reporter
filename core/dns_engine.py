@@ -139,7 +139,7 @@ class DNSEngine:
             except Exception as e:
                 return DNSResponse(status=f"ERROR: {str(e)}", protocol="udp")
         
-        return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="udp")
+        return DNSResponse(status="TIMEOUT", latency=None, protocol="udp")
 
     def _response_meta(self, response: dns.message.Message, protocol="udp", extra=None) -> Dict[str, Any]:
         if not response:
@@ -212,7 +212,7 @@ class DNSEngine:
             latency = (time.time() - start) * 1000
             return DNSResponse(status="VULNERABLE", latency=latency, protocol="tcp", answer_count=len(z.nodes), meta={"detail": f"{len(z.nodes)} nodes leaked"})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="tcp")
+            return DNSResponse(status="TIMEOUT", latency=None, protocol="tcp")
         except Exception as e:
             return DNSResponse(status="FAIL", protocol="tcp", meta={"error": str(e)})
 
@@ -232,7 +232,7 @@ class DNSEngine:
             status = "OK" if (has_dnskey and has_rrsig) else "NO_DNSSEC"
             return self._as_response(status, latency, response, extra={"query_type": "DNSKEY", "want_dnssec": True, "query_size": query_size, "has_dnskey": has_dnskey, "has_rrsig": has_rrsig})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000)
+            return DNSResponse(status="TIMEOUT", latency=None)
         except:
             return DNSResponse(status="FAIL")
 
@@ -260,7 +260,7 @@ class DNSEngine:
             return self._as_response(status, latency, response, extra={"ra": recursion_available, "query_size": query_size})
                 
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000)
+            return DNSResponse(status="TIMEOUT", latency=None)
         except:
             return DNSResponse(status="ERROR")
 
@@ -277,7 +277,7 @@ class DNSEngine:
             status = "OK" if response.edns == 0 else "FAIL"
             return self._as_response(status, latency, response, extra={"edns": response.edns, "payload": 4096, "query_size": query_size})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000)
+            return DNSResponse(status="TIMEOUT", latency=None)
         except:
             return DNSResponse(status="FAIL")
 
@@ -293,7 +293,7 @@ class DNSEngine:
             status = "OK" if ra else "NO_RECURSION"
             return self._as_response(status, latency, response, extra={"ra": ra, "query_size": query_size})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000)
+            return DNSResponse(status="TIMEOUT", latency=None)
         except:
             return DNSResponse(status="FAIL")
 
@@ -329,7 +329,7 @@ class DNSEngine:
                     "query_size": query_size
                 })
             except dns.exception.Timeout:
-                last_response = DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, meta={"query_class": "CH", "query_name": name})
+                last_response = DNSResponse(status="TIMEOUT", latency=None, meta={"query_class": "CH", "query_name": name})
             except Exception as e:
                 last_response = DNSResponse(status="HIDDEN", meta={"query_class": "CH", "query_name": name, "error": str(e)})
                 
@@ -345,7 +345,7 @@ class DNSEngine:
             latency = (time.time() - start) * 1000
             return self._as_response("OK", latency, response, protocol="tls", extra={"port": 853, "query_size": query_size})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="tls", meta={"port": 853})
+            return DNSResponse(status="TIMEOUT", latency=None, protocol="tls", meta={"port": 853})
         except:
             return DNSResponse(status="FAIL", protocol="tls", meta={"port": 853})
 
@@ -369,7 +369,7 @@ class DNSEngine:
                     return DNSResponse(status="OK", latency=latency, protocol="https", meta={"port": 443, "http_status": response.status_code, "response_size": len(response.content), "query_size": len(wire_query)})
             return DNSResponse(status="FAIL", latency=latency, protocol="https", meta={"port": 443, "http_status": response.status_code, "response_size": len(response.content), "query_size": len(wire_query)})
         except requests.exceptions.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="https", meta={"port": 443})
+            return DNSResponse(status="TIMEOUT", latency=None, protocol="https", meta={"port": 443})
         except:
             return DNSResponse(status="FAIL", protocol="https", meta={"port": 443})
 
@@ -383,7 +383,7 @@ class DNSEngine:
             latency = (time.time() - start) * 1000
             return self._as_response("OK", latency, response, protocol="tcp", extra={"port": 53, "query_size": query_size})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="tcp", meta={"port": 53})
+            return DNSResponse(status="TIMEOUT", latency=None, protocol="tcp", meta={"port": 53})
         except:
             return DNSResponse(status="FAIL", protocol="tcp", meta={"port": 53})
 
@@ -397,7 +397,7 @@ class DNSEngine:
             latency = (time.time() - start) * 1000
             return self._as_response("OK", latency, response, protocol="udp", extra={"port": 53, "query_size": query_size})
         except dns.exception.Timeout:
-            return DNSResponse(status="TIMEOUT", latency=self.timeout * 1000, protocol="udp", meta={"port": 53})
+            return DNSResponse(status="TIMEOUT", latency=None, protocol="udp", meta={"port": 53})
         except:
             return DNSResponse(status="FAIL", protocol="udp", meta={"port": 53})
 

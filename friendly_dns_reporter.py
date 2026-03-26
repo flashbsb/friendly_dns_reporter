@@ -517,35 +517,37 @@ def load_datasets(domains_path, groups_path):
     return domains_raw, dns_groups
 
 def compare_consistency(queries, settings):
-    """Check consistency between multiple query answers based on settings."""
-    if not queries:
-        return True
-
-    def _normalize_answer(answer):
-        parts = answer.split()
-        normalized = []
-        for part in parts:
-            token = part.rstrip(".")
-            try:
-                ip_obj = ipaddress.ip_address(token)
-                normalized.append(str(ip_obj) if not settings.strict_ip_check else token)
-                continue
-            except ValueError:
-                pass
-            normalized.append(part)
-        return " ".join(normalized)
+    """Check if multiple queries for the same record return identical results. Returns (bool, reason)"""
+    if not queries: return True, None
+    if len(queries) < 2: return True, None
     
-    def _get_key(q):
-        # Build comparison tuple based on strictness
-        ans = [_normalize_answer(a) for a in q.answers]
-        if not settings.strict_order_check:
-            ans = sorted(ans)
+    first = queries[0]
+    for i, q in enumerate(queries[1:], 1):
+        # 1. Status Mismatch (Always critical)
+        if q.status != first.status: 
+            return False, f"Status mismatch: Sample 1={first.status}, Sample {i+1}={q.status}"
         
-        ttl = q.ttl if settings.strict_ttl_check else None
-        return tuple(ans), ttl
-
-    base_key = _get_key(queries[0])
-    return all(_get_key(q) == base_key for q in queries[1:])
+        # 2. Answer Content Mismatch (Conditional)
+        if settings.strict_ip_check:
+            if settings.strict_order_check:
+                # Compare as lists (exact order)
+                if q.answers != first.answers:
+                    return False, f"Order mismatch: Sample 1={first.answers}, Sample {i+1}={q.answers}"
+            else:
+                # Compare as sets (order independent)
+                if set(q.answers) != set(first.answers): 
+                    only_in_first = set(first.answers) - set(q.answers)
+                    only_in_q = set(q.answers) - set(first.answers)
+                    reason = "Answer set mismatch"
+                    if only_in_first: reason += f"; Missing IPs sample {i+1}: {list(only_in_first)[:2]}"
+                    if only_in_q: reason += f"; New IPs sample {i+1}: {list(only_in_q)[:2]}"
+                    return False, reason
+        
+        # 3. TTL Mismatch (Conditional)
+        if settings.strict_ttl_check:
+            if q.ttl != first.ttl: 
+                return False, f"TTL mismatch: Sample 1={first.ttl}s, Sample {i+1}={q.ttl}s"
+    return True, None
 
 def is_open_resolver_safe(status):
     return status in {"REFUSED", "NO_RECURSION", "CLOSED"}
@@ -710,13 +712,12 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             _store_probe_repeat_summary(res, "tcp53_probe", {"sample_count": 0, "measured_count": 0, "first": None, "min": None, "latency": None, "max": None, "jitter": None, "status_consistent": None, "status_samples": []})
         _set_probe_observability(res, "tcp53_probe", res["port53t_serv"], res["port53t_probe_lat"])
         res["port53t_lat"] = res["port53t_probe_lat"] or res["port53t_conn_lat"]
-
         if settings.sleep_time > 0: time.sleep(settings.sleep_time)
 
         # 3. DNS-Dependent Checks (UDP)
         v_res = dns_engine.query_version(srv) if settings.check_bind_version else None
         if v_res:
-            res["version"] = v_res.status if v_res.status != "NOERROR" else (v_res.answers[0] if v_res.answers else "OK")
+            res["version"] = v_res.answers[0] if v_res.answers else v_res.status
             res["version_lat"] = _status_latency(res["version"], v_res.latency)
             _set_probe_observability(res, "version", res["version"], res["version_lat"])
             _store_query_evidence(res, "version", v_res)
@@ -857,7 +858,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                 qm_res = dns_engine.check_qname_minimization(srv, rd=True)
                 res["qname_min"] = qm_res.status == "OK"
                 res["qname_min_lat"] = qm_res.latency
-                res["qname_min_confidence"] = "LOW"
+                res["qname_min_confidence"] = "HIGH" if res["qname_min"] else "LOW"
             else:
                 res["qname_min"] = None
                 res["qname_min_lat"] = None
@@ -1120,6 +1121,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock):
     """Phase 2: Zone Integrity & SOA Synchronization."""
     ui.print_phase("2: Zone Integrity", "Checking SOA visibility, authority, synchronization, transfer exposure, and policy signals.")
+    ui.print_phase_header("2: Zone Integrity")
     phase_start_time = time.time()
     zone_results = []
     active_items = {}
@@ -1488,7 +1490,6 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         ],
         interpretation="Focus first on desynchronized domains and any unexpected AXFR exposure."
     )
-    ui.print_phase_header("2: Zone Integrity")
 
     # Phase Summary
     vuln = sum(1 for r in zone_results if r['axfr_vulnerable'])
@@ -1687,7 +1688,9 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                     queries.append(res)
                     if settings.sleep_time > 0: time.sleep(settings.sleep_time)
                     
-                is_consistent = compare_consistency(queries, settings)
+                is_consistent, div_reason = compare_consistency(queries, settings)
+                if not queries:
+                    continue
                 main_q = queries[0]
                 query_latencies = [q.latency for q in queries if q.latency is not None]
                 jitter = round(max(query_latencies) - min(query_latencies), 2) if len(query_latencies) > 1 else 0.0
@@ -1697,6 +1700,9 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                 
                 # SEMANTIC AUDIT
                 findings = []
+                
+                if not is_consistent and div_reason:
+                    findings.append(f"DIVERGENCE: {div_reason}")
                 
                 # 0. Protocol Flags (TC - Truncated)
                 if main_q.tc:

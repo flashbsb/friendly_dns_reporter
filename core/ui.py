@@ -18,6 +18,7 @@ FAIL  = _ansi("\033[91m")  # Red
 WARN  = _ansi("\033[93m")  # Yellow
 INFO  = _ansi("\033[96m")  # Cyan
 CRIT  = _ansi("\033[95m")  # Magenta/Purple
+DIM   = _ansi("\033[90m")  # Grey/Dim
 BOLD  = _ansi("\033[1m")
 UNDER = _ansi("\033[4m")
 BLINK = _ansi("\033[5m")
@@ -73,7 +74,7 @@ def _compact_status(status, width=12):
 
 def _fmt_latency(value, precision=0, na="N/A", warn_ms=150, crit_ms=500):
     if value is None:
-        return f"{RESET}{na}{RESET}"
+        return f"{DIM}{na}{RESET}"
     try:
         val = float(value)
         clr = OK
@@ -88,8 +89,9 @@ def _fmt_reliability_bar(loss_pct, count=10):
     if loss_pct is None: return "[----------]"
     lost = round((loss_pct / 100.0) * count)
     ok = count - lost
-    # Using dots for OK and circles for FAIL
-    bar = f"{OK}{'●' * ok}{RESET}{FAIL}{'○' * lost}{RESET}"
+    # Using light green for dots (as per user request for lighter feel)
+    dot_clr = _ansi("\033[38;5;121m") if COLOR_ENABLED else OK
+    bar = f"{dot_clr}{'●' * ok}{RESET}{FAIL}{'○' * lost}{RESET}"
     return f"[{bar}]"
 
 def _fmt_probe_evidence(data, probe_name, label=None):
@@ -107,35 +109,36 @@ def _fmt_probe_evidence(data, probe_name, label=None):
     ra = data.get(f"{probe_name}_ra")
 
     details = []
+    d = DIM
     if protocol:
-        details.append(f"proto={INFO}{protocol}{RESET}")
+        details.append(f"{d}proto={RESET}{INFO}{protocol}{RESET}")
     if rcode:
         # Colorize common RCODEs
         clr = OK if rcode == "NOERROR" else (WARN if rcode in ["NXDOMAIN", "REFUSED"] else FAIL)
-        details.append(f"rcode={clr}{rcode}{RESET}")
+        details.append(f"{d}rcode={RESET}{clr}{rcode}{RESET}")
     if flags:
-        details.append(f"flags={','.join(str(f) for f in flags[:4])}")
+        details.append(f"{d}flags={RESET}{INFO}{','.join(str(f) for f in flags[:4])}{RESET}")
     if query_size is not None:
-        details.append(f"q={query_size}B")
+        details.append(f"{d}q={RESET}{INFO}{query_size}B{RESET}")
     if response_size is not None:
-        details.append(f"r={response_size}B")
+        details.append(f"{d}r={RESET}{INFO}{response_size}B{RESET}")
     if authority_count is not None:
-        details.append(f"auth={authority_count}")
+        details.append(f"{d}auth={RESET}{INFO}{authority_count}{RESET}")
     if answer_count is not None:
-        details.append(f"answers={answer_count}")
+        details.append(f"{d}answers={RESET}{INFO}{answer_count}{RESET}")
     if aa is not None:
-        details.append(f"aa={OK if aa else FAIL}{'Y' if aa else 'N'}{RESET}")
+        details.append(f"{d}aa={RESET}{OK if aa else FAIL}{'Y' if aa else 'N'}{RESET}")
     if tc is not None:
-        details.append(f"tc={WARN if tc else OK}{'Y' if tc else 'N'}{RESET}")
+        details.append(f"{d}tc={RESET}{WARN if tc else OK}{'Y' if tc else 'N'}{RESET}")
     if http_status is not None:
         clr = OK if http_status == 200 else FAIL
-        details.append(f"http={clr}{http_status}{RESET}")
+        details.append(f"{d}http={RESET}{clr}{http_status}{RESET}")
     if ra is not None:
-        details.append(f"ra={OK if ra else FAIL}{'Y' if ra else 'N'}{RESET}")
+        details.append(f"{d}ra={RESET}{OK if ra else FAIL}{'Y' if ra else 'N'}{RESET}")
 
     if not details:
-        return f"{label}=N/A"
-    return f"{label}=" + ",".join(details)
+        return f"{DIM}{label}=N/A{RESET}"
+    return f"{BOLD}{label}{RESET}=" + ",".join(details)
 
 def _fmt_probe_repeat(data, probe_name, label=None):
     label = label or probe_name
@@ -371,21 +374,22 @@ def _fmt_soa_timers(timers):
     
     try:
         ref, ret, exp, mn = timers
-        # Simple RFC 1912 compliance coloring
-        def _c(val, min_v, max_v):
+        def _c(val, min_v, max_v, extra_check=True):
              try:
                  v = int(val)
-                 if min_v <= v <= max_v: return f"{OK}{val}{RESET}"
+                 if min_v <= v <= max_v and extra_check: return f"{INFO}{val}{RESET}"
                  return f"{WARN}{val}{RESET}"
              except: return str(val)
 
-        # Refresh: 20m-12h | Retry: 2m-2h | Expire: 2w-4w | Min: 3m-1d
+        # RFC 1912 ranges + Retry < Refresh check
         ref_s = _c(ref, 1200, 43200)
-        ret_s = _c(ret, 120, 7200)
+        ret_s = _c(ret, 120, 7200, extra_check=(int(ret) < int(ref)))
         exp_s = _c(exp, 1209600, 2419200)
         min_s = _c(mn, 180, 86400)
         
-        return f"[Ref: {ref_s} | Ret: {ret_s} | Exp: {exp_s} | Min: {min_s}]"
+        d = DIM
+        r = RESET
+        return f"{d}[Ref: {r}{ref_s} {d}| Ret: {r}{ret_s} {d}| Exp: {r}{exp_s} {d}| Min: {r}{min_s}{d}]{r}"
     except:
         return f"{FAIL}ERROR{RESET}"
 
@@ -457,27 +461,64 @@ def print_infra_detail(srv, data, level=1, is_last=False):
 
     # ├─ Profile/Resolver/Version
     profile_clr = OK if profile == "authoritative" else (INFO if profile == "recursive" else WARN)
-    resolver_clr = FAIL if resolver_class == "PUBLIC" else (OK if resolver_class == "RESTRICTED" else RESET)
-    version_clr = OK if version not in ["HIDDEN", "N/A", "DISABLED", "TIMEOUT"] else WARN
     
-    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile_clr}{profile:9}{RESET} | {BOLD}Resolver{RESET}: {resolver_clr}{resolver_class:10}{RESET}/{resolver_conf:7} | {BOLD}Version{RESET}: {version_clr}{version}{RESET}")
+    # Resolver Classification Color
+    if resolver_class == "PUBLIC": resolver_clr = FAIL
+    elif resolver_class == "RESTRICTED": resolver_clr = OK
+    else: resolver_clr = INFO # UNKNOWN or other
+    
+    # Confidence Color
+    norm_conf = resolver_conf.upper()
+    if norm_conf == "HIGH": conf_clr = OK
+    elif norm_conf == "MEDIUM": conf_clr = WARN
+    elif norm_conf == "LOW": conf_clr = FAIL
+    else: conf_clr = RESET
+
+    # Secure is HIDDEN (Green), revealed version is a leak (Red)
+    if version in ["HIDDEN", "N/A", "DISABLED"]:
+        version_clr = OK
+    elif version in ["TIMEOUT", "ERROR"]:
+        version_clr = WARN
+    else:
+        version_clr = FAIL
+    
+    # Combine Resolver and Confidence for cleaner alignment
+    res_combined = f"{resolver_class}/{resolver_conf}"
+    # Calculate padding to keep the Version field aligned (total 18 chars for resolver block)
+    res_padding = " " * max(0, 18 - len(res_combined))
+    res_display = f"{resolver_clr}{resolver_class}{RESET}/{conf_clr}{resolver_conf}{RESET}{res_padding}"
+
+    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile_clr}{profile:9}{RESET} | {BOLD}Resolver{RESET}: {res_display} | {BOLD}Version{RESET}: {version_clr}{version}{RESET}")
     
     # ├─ Transit (Ping/UDP/TCP)
     ping_avg = _fmt_latency(data.get('latency'))
     ping_range = f"[{_fmt_latency(data.get('latency_min'))}..{_fmt_latency(data.get('latency_max'))}]"
     udp53 = _fmt_latency(data.get('udp53_probe_lat'))
     tcp53 = _fmt_latency(data.get('port53t_probe_lat'))
-    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={OK if data.get('ping')=='OK' else FAIL}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
+    ping_status_clr = (OK if data.get('ping')=='OK' else FAIL) if data.get('latency') is not None else DIM
+    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_status_clr}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
     
     # ├─ Crypto (DoT/DoH)
     dot_status = data.get('dot', 'FAIL')
     doh_status = data.get('doh', 'FAIL')
     dot_full = _fmt_latency(data.get('dot_lat'))
     doh_full = _fmt_latency(data.get('doh_lat'))
-    print(f"{sub_prefix}{BOLD}Crypto{RESET}   : DoT={OK if dot_status=='OK' else FAIL}{dot_full}{RESET} | DoH={OK if doh_status=='OK' else FAIL}{doh_full}{RESET}")
+    # If it's N/A, we use DIM, otherwise we use the status color
+    dot_clr = (OK if dot_status=='OK' else FAIL) if data.get('dot_lat') is not None else DIM
+    doh_clr = (OK if doh_status=='OK' else FAIL) if data.get('doh_lat') is not None else DIM
+    print(f"{sub_prefix}{BOLD}Crypto{RESET}   : DoT={dot_clr}{dot_full}{RESET} | DoH={doh_clr}{doh_full}{RESET}")
     
     # └─ Features (Caps/DNSSEC/QNAME)
-    print(f"{last_sub_prefix}{BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={dnssec_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={qname_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
+    # Re-evaluating colors for potential N/A
+    dnssec_mode_str = str(dnssec_mode)
+    if dnssec_mode_str in ["N/A", "DISABLED", "UNKNOWN", "DEAD"]: d_clr = DIM
+    else: d_clr = dnssec_clr
+    
+    qname_min_str = str(qname_min)
+    if qname_min_str in ["N/A", "DISABLED", "NONE", "UNKNOWN"]: q_clr = DIM
+    else: q_clr = qname_clr
+
+    print(f"{last_sub_prefix}{BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={d_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={q_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
 
 def print_zone_detail(srv, domain, res, level=2, is_last=False):
     serial = res.get('serial', '?')
@@ -694,7 +735,12 @@ def print_record_context(record, level=3):
 
     # Chain Depth
     chain = record.get("chain_depth", 1)
-    chain_str = f"{chain} hops" if chain > 1 else "Direct"
+    if chain <= 1:
+        chain_str = f"{OK}Direct{RESET}"
+    elif chain <= 3:
+        chain_str = f"{WARN}{chain} hops{RESET}"
+    else:
+        chain_str = f"{FAIL}{chain} hops{RESET}"
 
     nsid = _ellipsize(record.get("nsid") or "-", 15)
     
@@ -706,7 +752,7 @@ def print_record_context(record, level=3):
     print(f"{sub_prefix}Transit: {BOLD}Ping{RESET}={_fmt_latency(record.get('ping_latency'))} | {BOLD}DNS: UDP{RESET}={_fmt_latency(record.get('latency'))} | {BOLD}Amplification{RESET}: {amp_str}")
     print(f"{sub_prefix}Crypto : {BOLD}DoT{RESET}={_fmt_latency(record.get('dot_latency'))} | {BOLD}DoH{RESET}={_fmt_latency(record.get('doh_latency'))}")
     print(f"{sub_prefix}Perf   : {BOLD}Jitter{RESET}={_fmt_latency(record.get('latency_jitter'))} | {BOLD}Avg{RESET}={_fmt_latency(record.get('latency_avg'))} | {BOLD}Chain{RESET}: {chain_str}")
-    print(f"{last_sub_prefix}{BOLD}NSID{RESET}: {nsid} | {BOLD}Answers{RESET}: {answers}")
+    print(f"{last_sub_prefix}{BOLD}NSID{RESET}: {INFO}{nsid}{RESET} | {BOLD}Answers{RESET}: {INFO}{answers}{RESET}")
 
 def print_progress(current, total, prefix="", length=30, status_suffix=""):
     """Prints a carriage-return progress bar."""
@@ -752,6 +798,7 @@ def print_legend_phase1_table():
         f"{BOLD}U53 / T53 {RESET}    : DNS Port 53 Availability (UDP/TCP).",
         f"{BOLD}DoT / DoH {RESET}    : Encrypted DNS Latency (Po853/Po443).",
         f"{BOLD}Sc / Status{RESET}   : Individual infra score and reachability.",
+        f"{BOLD}Resolver {RESET}     : PUBLIC/RESTRICTED status and Confidence (H/M/L).",
         f"{BOLD}Features {RESET}     : [S]igned [E]dns [K]ookies [Q]name [X]ecs"
     ])
 

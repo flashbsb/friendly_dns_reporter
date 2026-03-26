@@ -1,6 +1,7 @@
 infos/
 *test*
 .agent/
+audit*
 
 # Python
 __pycache__/
