@@ -211,7 +211,6 @@ def _handle_missing_dependencies(missing_packages, auto_install=False):
 import argparse
 import csv
 import concurrent.futures
-import ipaddress
 import threading
 import logging
 import time
@@ -431,9 +430,12 @@ def _query_log_payload(query_result, include_full_response=False):
 def _get_csv_header(data_list):
     """Collect all unique keys from all dictionaries in a list for CSV header."""
     if not data_list: return []
+    if not isinstance(data_list[0], dict): return []
     header = list(data_list[0].keys())
     header_set = set(header)
     for d in data_list[1:]:
+        if not isinstance(d, dict):
+            continue
         for k in d.keys():
             if k not in header_set:
                 header.append(k)
@@ -767,9 +769,12 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             res["recursion"] = "DISABLED"
             res["recursion_lat"] = None
         
-        # Service Validation
-        udp_aux_ok = res["version"] not in ["TIMEOUT", "UNREACHABLE", "DISABLED"] or \
-                     res["recursion"] not in ["TIMEOUT", "UNREACHABLE", "DISABLED"]
+        # Service Validation: UDP is considered responsive if direct probe OK,
+        # or if any auxiliary DNS check (version/recursion) returned a meaningful response
+        failure_statuses = {"TIMEOUT", "UNREACHABLE", "DISABLED"}
+        version_responded = res["version"] not in failure_statuses
+        recursion_responded = res["recursion"] not in failure_statuses
+        udp_aux_ok = version_responded or recursion_responded
         udp_serv_ok = res["udp53_status_raw"] == "OK" or udp_aux_ok
         udp_timeout_seen = any(status == "TIMEOUT" for status in [res.get("udp53_status_raw"), res.get("version"), res.get("recursion")])
         res["port53u_serv"] = "OK" if udp_serv_ok else ("TIMEOUT" if udp_timeout_seen else "FAIL")
@@ -1051,8 +1056,11 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             insights["Probe Jitter"] = f"{(sum(jitter_values) / len(jitter_values)):.1f}ms average across {len(jitter_values)} repeated probes"
         else:
             insights["Probe Jitter"] = "N/A (insufficient repeated latency samples)"
-        avg_probe_coverage = sum(r.get("probe_coverage_ratio", 0.0) for r in infra_results.values() if not r.get("is_dead")) / alive
-        insights["Probe Coverage"] = f"{avg_probe_coverage:.1f}% ({sum(r.get('measured_probe_count', 0) for r in infra_results.values() if not r.get('is_dead'))} measured probes)"
+        # Probe Coverage: ratio of successful repeated probes vs total attempted
+        total_samples = sum(row.get(f"{pn}_sample_count", 0) or 0 for row in infra_results.values() if not row.get("is_dead") for pn in repeated_probe_names)
+        total_measured = sum(row.get(f"{pn}_measured_count", 0) or 0 for row in infra_results.values() if not row.get("is_dead") for pn in repeated_probe_names)
+        coverage_pct = (total_measured / total_samples * 100) if total_samples > 0 else 0.0
+        insights["Probe Coverage"] = f"{coverage_pct:.1f}% ({total_measured}/{total_samples} successful probe samples)"
 
         transport_scores = []
         control_plane_scores = []
@@ -1294,7 +1302,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     try:
                         t_ref, t_ret, t_exp, t_min = int(timer_parts[0]), int(timer_parts[1]), int(timer_parts[2]), int(timer_parts[3])
                         timers_list.append((t_ref, t_ret, t_exp, t_min))
-                    except: pass
+                    except (ValueError, TypeError, IndexError) as e:
+                        logging.warning(f"[PHASE 2] Failed to parse SOA timers for {domain} on {srv}: {e}")
                 
                 aa = soa.aa
                 latency = soa.latency
@@ -1561,7 +1570,10 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
             ))
         if zone_probe_latencies:
             avg_zone_latency = sum(zone_probe_latencies) / len(zone_probe_latencies)
-            insights["Zone Response Health"] = f"{max(0, 100 - (avg_zone_latency / settings.soa_latency_warn * 50)):.1f}% ({_format_probe_basis(zone_probe_latencies)})"
+            if settings.soa_latency_warn and settings.soa_latency_warn > 0:
+                insights["Zone Response Health"] = f"{max(0, 100 - (avg_zone_latency / settings.soa_latency_warn * 50)):.1f}% ({_format_probe_basis(zone_probe_latencies)})"
+            else:
+                insights["Zone Response Health"] = "N/A (soa_latency_warn not configured)"
         else:
             insights["Zone Response Health"] = "N/A (no successful zone probe timings)"
 
@@ -1803,7 +1815,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
                     "is_consistent": is_consistent,
                     "findings": findings,
                     "chain_latency": round(sum(chain_latencies) / len(chain_latencies), 2) if chain_latencies else None,
-                    "chain_depth": max(chain_depths) if chain_depths else 1,
+                    "chain_depth": max(chain_depths) if chain_depths else 0,
                     "mx_port25_latency": round(sum(mx_port25_latencies) / len(mx_port25_latencies), 2) if mx_port25_latencies else None,
                     "wildcard_detected": False,
                     "wildcard_answers": [],
@@ -1840,7 +1852,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
         "Phase 3 Snapshot",
         [
             ("Queries", len(results)),
-            ("Successful", sum(1 for r in results if r['status'] == "NOERROR")),
+            ("Successful", sum(1 for r in results if r.get('status') == "NOERROR")),
             ("Divergent", sum(1 for r in results if r.get("internally_consistent") == "DIV!")),
             ("Findings", sum(1 for r in results if r.get("findings")))
         ],
@@ -1849,16 +1861,16 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     ui.print_phase_header("3: Record Consistency")
     
     # Sort results
-    sorted_results = sorted(results, key=lambda x: (x.get('domain_parent', ''), x.get('domain', ''), x.get('group', ''), x.get('server', '')))
+    sorted_results = sorted(results, key=lambda x: (str(x.get('domain_parent', '')), str(x.get('domain', '')), str(x.get('group', '')), str(x.get('server', ''))))
     
     wildcard_cache = {}
     for r in sorted_results:
-        current_zone_srv = (r['domain'], r['server'])
+        current_zone_srv = (r.get('domain', ''), r.get('server', ''))
         if current_zone_srv in wildcard_cache:
             continue
-        if r['status'] == "NOERROR":
-            is_recursive = dns_groups.get(r['group'], {}).get("type") == "recursive"
-            wildcard_cache[current_zone_srv] = dns_engine.detect_wildcard(r['server'], r['domain'], rd=is_recursive)
+        if r.get('status') == "NOERROR":
+            is_recursive = dns_groups.get(r.get('group', ''), {}).get("type") == "recursive"
+            wildcard_cache[current_zone_srv] = dns_engine.detect_wildcard(r.get('server', ''), r.get('domain', ''), rd=is_recursive)
         else:
             wildcard_cache[current_zone_srv] = (False, [], None)
 
@@ -1902,7 +1914,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
         r["wildcard_latency"] = wc_latency
 
         print(ui.format_result(
-            target, grp, srv, r['type'], r['status'], r['latency'], r['is_consistent'],
+            target, grp, srv, r.get('type', 'ERR'), r.get('status', 'ERROR'), r.get('latency'), r.get('is_consistent', False),
             level=3, is_last=is_last_srv,
             warn_ms=settings.rec_latency_warn, crit_ms=settings.rec_latency_crit, ad=r.get('ad', False)
         ))
@@ -1917,7 +1929,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
             ui.print_record_findings([f"Zone-level wildcard detected: random subdomains resolved to {wc_ans}"])
     
     # Phase 3 Analytics
-    succ = sum(1 for r in results if r['status'] == "NOERROR")
+    succ = sum(1 for r in results if r.get('status') == "NOERROR")
     fail = len(results) - succ
     
     insights = {}
