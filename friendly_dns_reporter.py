@@ -2653,7 +2653,16 @@ def main():
         logging.info("=============================================================================")
         logging.info("FRIENDLY DNS REPORTER FINISHED")
         logging.info("=============================================================================")
-    # 1) Dashboard final (no legend here — printed after advanced analytics)
+
+    # ── Advanced Analytics (printed before dashboard) ──
+    ui.print_advanced_analytics(advanced)
+
+    # ── Legends (printed before dashboard, only when enabled) ──
+    if show_legends:
+        ui.print_legend_summary()
+        ui.print_legend_advanced_analytics()
+
+    # ── Final Dashboard (always last) ──
     ui.print_summary_table(
         total,
         success,
@@ -2673,14 +2682,6 @@ def main():
         takeaways=takeaways,
         score_breakdown=score_breakdown
     )
-
-    # 2) Advanced Analytics
-    ui.print_advanced_analytics(advanced)
-
-    # 3) Legends (all together at the end, only when ENABLE_UI_LEGENDS = True)
-    if show_legends:
-        ui.print_legend_summary()
-        ui.print_legend_advanced_analytics()
 
 if __name__ == "__main__":
     main()
