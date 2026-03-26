@@ -205,9 +205,11 @@ def print_header(threads, consistency, target):
     print("-" * 80)
 
 def print_phase(name, objective=None):
-    print(f"\n{BOLD}{INFO}>>> PHASE {name}{RESET}")
+    width = 80
+    print(f"\n{BOLD}{INFO}━━ PHASE {name.upper()} {'━' * (width - len(name) - 12)}{RESET}")
     if objective:
-        print(f"  {_status_tag('INFO')} {objective}")
+        print(f"  {objective}")
+    print("")
 
 def print_phase_snapshot(title, items, interpretation=None):
     width = 80
@@ -650,27 +652,25 @@ def print_warning(msg):
 
 def print_phase_footer(name, metrics, duration: float = 0.0, insights=None):
     width = 80
-    print(f"\n  {BOLD}RESULT SUMMARY: PHASE {name.upper()}{RESET}")
-    print(f"  {'═' * width}")
+    print(f"  ── PHASE {name.upper()} SUMMARY {'─' * (width - len(name) - 20)}")
     
     rows = _format_metrics(list(metrics.items()), width=3)
     for r in rows:
         print(f"  {r}")
 
     if insights:
-        print(f"\n  {BOLD}ANALYTICAL SIGNALS{RESET}")
+        print(f"  ── ANALYTICAL SIGNALS {'─' * (width - 24)}")
         for k, v in insights.items():
             # Determine icon based on key
             icon = f"{INFO}[i]{RESET}"
             if any(x in k.upper() for x in ["HEALTH", "COMPLIANCE", "STABILITY"]): icon = f"{OK}[H]{RESET}"
             if any(x in k.upper() for x in ["EXPOSURE", "RISK", "VULN"]): icon = f"{FAIL}[×]{RESET}"
             if any(x in k.upper() for x in ["FALLBACK", "LATENCY"]): icon = f"{WARN}[!]{RESET}"
-            
             print(f"  {icon} {BOLD}{k:22}{RESET}: {v}")
 
     if duration > 0.0:
-        print(f"\n  {INFO}>> Process completed in {duration:.2f}s{RESET}")
-    print("  " + "─" * width)
+        print(f"  Done in {duration:.2f}s")
+    print(f"  {'─' * width}")
 
 def format_result(target, group, server, rtype, status, latency, is_consistent, level=3, is_last=False, warn_ms=150, crit_ms=500, ad=False):
     if status == "NOERROR" or status == "NXDOMAIN":

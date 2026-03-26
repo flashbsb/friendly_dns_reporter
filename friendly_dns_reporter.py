@@ -945,18 +945,6 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     alive = sum(1 for r in infra_results.values() if not r['is_dead'])
     dead = len(infra_results) - alive
 
-    ui.print_phase_snapshot(
-        "Phase 1 Snapshot",
-        [
-            ("Servers", len(infra_results)),
-            ("Alive", alive),
-            ("Dead", dead),
-            ("Public recursion", sum(1 for r in infra_results.values() if r.get("resolver_exposed") is True)),
-            ("Encrypted DNS", sum(1 for r in infra_results.values() if r.get("dot") == "OK" or r.get("doh") == "OK"))
-        ],
-        interpretation="Use this block to understand coverage before reading the detailed rows."
-    )
-
     # Order results by group then by server IP
     sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', 'UNCATEGORIZED'), x[0]))
     ui.print_phase_header("1: Server Infrastructure")
@@ -1526,18 +1514,6 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     watcher.join(timeout=settings.watchdog_join_timeout)
         
         
-    ui.print_phase_snapshot(
-        "Phase 2 Snapshot",
-        [
-            ("Domains", len(zones)),
-            ("Zone checks", len(zone_results)),
-            ("SOA-only", sum(1 for r in zone_results if r.get("check_scope") == "SOA_ONLY")),
-            ("AXFR exposed", sum(1 for r in zone_results if r.get("axfr_vulnerable"))),
-            ("Desynced domains", len({r["domain"] for r in zone_results if r.get("zone_is_synced") is False}))
-        ],
-        interpretation="Focus first on desynchronized domains and any unexpected AXFR exposure."
-    )
-
     # Phase Summary
     vuln = sum(1 for r in zone_results if r['axfr_vulnerable'])
     lame = sum(1 for r in zone_results if not r.get('aa', True) and r.get('status') == "NOERROR")
@@ -1850,16 +1826,6 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     watcher.join(timeout=0.1)
 
     # Post-collection sorting and printing
-    ui.print_phase_snapshot(
-        "Phase 3 Snapshot",
-        [
-            ("Queries", len(results)),
-            ("Successful", sum(1 for r in results if r.get('status') == "NOERROR")),
-            ("Divergent", sum(1 for r in results if r.get("internally_consistent") == "DIV!")),
-            ("Findings", sum(1 for r in results if r.get("findings")))
-        ],
-        interpretation="Treat divergence as context-sensitive; repeated findings across the same domain/server deserve priority."
-    )
     ui.print_phase_header("3: Record Consistency")
     
     # Sort results
