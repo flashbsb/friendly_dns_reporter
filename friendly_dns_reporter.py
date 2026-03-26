@@ -100,6 +100,7 @@ def _handle_missing_dependencies(missing_packages, auto_install=False):
     for pkg in missing_packages:
         print(f"    - {pkg}")
 
+    should_install = False
     if auto_install:
         _bootstrap_note("Automatic dependency installation explicitly enabled by --install-missing-deps.")
         print("[*] Automatic dependency installation explicitly enabled by --install-missing-deps.")
@@ -253,10 +254,19 @@ def _format_probe_basis(latencies):
 def _latency_log(value):
     return f"{value:.1f}ms" if value is not None else "N/A"
 
+def _format_progress_status(active_items, idle_for):
+    if not active_items:
+        return "idle"
+    active_str = ", ".join(list(active_items)[:3])
+    if len(active_items) > 3:
+        active_str += f"... (+{len(active_items)-3})"
+    return f"{idle_for:.1f}s idle | {active_str}"
+
 def _probe_failure_reason(status, latency=None):
     text = str(status or "").upper()
-    if latency is None and text in {"OK", "OPEN", "NOERROR", "NXDOMAIN", "REFUSED", "NO_RECURSION", "SERVFAIL", "HIDDEN"}:
-        return "no_timing"
+    success_statuses = {"OK", "OPEN", "NOERROR", "NXDOMAIN", "REFUSED", "NO_RECURSION", "SERVFAIL", "HIDDEN"}
+    if text in success_statuses:
+        return "no_timing" if latency is None else "none"
     if "TIMEOUT" in text:
         return "timeout"
     if "UNREACHABLE" in text:
@@ -269,8 +279,6 @@ def _probe_failure_reason(status, latency=None):
         return "error"
     if text in {"FAIL", "FALSE"}:
         return "probe_failed"
-    if text in {"OK", "OPEN", "NOERROR", "NXDOMAIN", "REFUSED", "NO_RECURSION", "SERVFAIL", "HIDDEN"}:
-        return "none"
     return text.lower() if text else "unknown"
 
 def _set_probe_observability(res, name, status, latency, source="direct"):
@@ -318,7 +326,8 @@ def _run_repeated_probe(probe_fn, repeats, success_statuses=None):
     min_latency = min(successful_latencies) if successful_latencies else None
     max_latency = max(successful_latencies) if successful_latencies else None
     avg_latency = round(sum(successful_latencies) / len(successful_latencies), 2) if successful_latencies else None
-    jitter = round(max_latency - min_latency, 2) if len(successful_latencies) >= 2 else None
+    has_pair = successful_latencies and len(successful_latencies) >= 2 and max_latency is not None and min_latency is not None
+    jitter = round(max_latency - min_latency, 2) if has_pair else None
 
     return {
         "status": representative_status,
@@ -381,7 +390,7 @@ def _run_repeated_query(query_fn, repeats, success_statuses=None):
     min_latency = min(successful_latencies) if successful_latencies else None
     max_latency = max(successful_latencies) if successful_latencies else None
     avg_latency = round(sum(successful_latencies) / len(successful_latencies), 2) if successful_latencies else None
-    jitter = round(max_latency - min_latency, 2) if len(successful_latencies) >= 2 else None
+    jitter = round(max_latency - min_latency, 2) if successful_latencies and len(successful_latencies) >= 2 and max_latency is not None and min_latency is not None else None
 
     return representative_query, {
         "status": representative_status,
@@ -474,12 +483,15 @@ def load_datasets(domains_path, groups_path):
             with open(path, 'r', encoding='utf-8-sig') as f:
                 content = f.read()
                 if not content: return []
-                # Detect delimiter: comma, semicolon or tab
-                delim = ';'
+                # Detect delimiter: comma, semicolon or tab (prefer most frequent in header)
+                header_line = content.split('\n')[0]
+                delim = ','
+                best_count = 0
                 for d in [';', ',', '\t']:
-                    if d in content.split('\n')[0]:
+                    count = header_line.count(d)
+                    if count > best_count:
+                        best_count = count
                         delim = d
-                        break
                 
                 f.seek(0)
                 reader = csv.DictReader(f, delimiter=delim)
@@ -581,6 +593,13 @@ def classify_open_resolver(status):
             "resolver_restricted": None,
             "confidence": "NONE"
         }
+    if status in {"FAIL", "TIMEOUT", "ERROR"}:
+        return {
+            "classification": "UNKNOWN",
+            "resolver_exposed": None,
+            "resolver_restricted": None,
+            "confidence": "NONE"
+        }
     return {
         "classification": "UNKNOWN",
         "resolver_exposed": None,
@@ -601,14 +620,18 @@ def derive_server_profile(group_types):
 def score_label(value):
     if value is None:
         return "N/A"
-    return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return "N/A"
 
-def start_phase_watchdog(label, counters, total, active_items, lock, log_enabled=True):
+def start_phase_watchdog(label, counters, total, active_items, lock, settings=None, log_enabled=True):
     """
     Spawns a background thread to track progress and report stall/idle status.
     Uses settings for dynamic intervals.
     """
-    settings = Settings()
+    if settings is None:
+        settings = Settings()
     interval = settings.watchdog_interval
     stop_event = threading.Event()
     state = {"status": "", "last_done": -1, "last_change": time.time(), "last_idle_bucket": -1}
@@ -630,7 +653,7 @@ def start_phase_watchdog(label, counters, total, active_items, lock, log_enabled
             
             if done < total:
                 idle_for = now - state["last_change"]
-                state["status"] = ui.format_progress_status(active_snapshot, idle_for)
+                state["status"] = _format_progress_status(active_snapshot, idle_for)
                 
                 idle_bucket = int(idle_for // interval)
                 if log_enabled and idle_bucket > state["last_idle_bucket"]:
@@ -672,12 +695,19 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
         }
         
         # 1. Connectivity Probes (Ping)
-        ping_res = conn.ping(srv, count=settings.ping_count) if settings.enable_ping else {"is_alive": True}
-        res["ping"] = "OK" if ping_res.get("is_alive") else "FAIL"
-        res["latency"] = _latency_or_none(ping_res.get("avg_rtt"))
-        res["latency_min"] = _latency_or_none(ping_res.get("min_rtt"))
-        res["latency_max"] = _latency_or_none(ping_res.get("max_rtt"))
-        res["packet_loss"] = ping_res.get("packet_loss", 0.0)
+        if settings.enable_ping:
+            ping_res = conn.ping(srv, count=settings.ping_count)
+            res["ping"] = "OK" if ping_res.get("is_alive") else "FAIL"
+            res["latency"] = _latency_or_none(ping_res.get("avg_rtt"))
+            res["latency_min"] = _latency_or_none(ping_res.get("min_rtt"))
+            res["latency_max"] = _latency_or_none(ping_res.get("max_rtt"))
+            res["packet_loss"] = ping_res.get("packet_loss", 0.0)
+        else:
+            res["ping"] = "DISABLED"
+            res["latency"] = None
+            res["latency_min"] = None
+            res["latency_max"] = None
+            res["packet_loss"] = 0.0
         res["ping_count"] = settings.ping_count 
         res["ping_latency_warn"] = settings.ping_latency_warn
         res["ping_latency_crit"] = settings.ping_latency_crit
@@ -745,7 +775,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
         res["port53u_serv"] = "OK" if udp_serv_ok else ("TIMEOUT" if udp_timeout_seen else "FAIL")
         _set_probe_observability(res, "udp53_probe", res["port53u_serv"], res["udp53_probe_lat"], source="direct")
         
-        is_alive = (res["ping"] == "OK") or udp_serv_ok or (res["port53t_serv"] == "OK")
+        is_alive = (res["ping"] in ("OK", "DISABLED")) or udp_serv_ok or (res["port53t_serv"] == "OK")
         
         if not is_alive:
             res["is_dead"] = True
@@ -894,7 +924,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
     counters = {'done': 0}
     total = len(servers)
-    stop_event, watcher, watchdog_state = start_phase_watchdog("Scanning Servers", counters, total, active_items, lock, log_enabled=settings.enable_execution_log)
+    stop_event, watcher, watchdog_state = start_phase_watchdog("Scanning Servers", counters, total, active_items, lock, settings=settings, log_enabled=settings.enable_execution_log)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         list(executor.map(_check_server, servers))
     stop_event.set()
@@ -991,8 +1021,11 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             ))
         if all_probe_latencies:
             avg_probe_lat = sum(all_probe_latencies) / len(all_probe_latencies)
-            sla_health = max(0, 100 - (avg_probe_lat / settings.ping_latency_warn * 50))
-            insights["Network Health"] = f"{sla_health:.1f}% ({_format_probe_basis(all_probe_latencies)})"
+            if settings.ping_latency_warn and settings.ping_latency_warn > 0:
+                sla_health = max(0, 100 - (avg_probe_lat / settings.ping_latency_warn * 50))
+                insights["Network Health"] = f"{sla_health:.1f}% ({_format_probe_basis(all_probe_latencies)})"
+            else:
+                insights["Network Health"] = "N/A (ping_latency_warn not configured)"
         else:
             insights["Network Health"] = "N/A (no successful latency probes)"
         repeated_probe_names = ["udp53_probe", "tcp53_probe", "dot_probe", "doh_probe", "open_resolver"]
@@ -1401,7 +1434,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
                     "mname": "N/A", "rname": "N/A", "scope_confidence": "NONE", "used_fallback": False
                 })
 
-        is_synced = len(set(s for s in serials.values() if s != "N/A")) <= 1
+        is_synced = len(set(s for s in serials.values() if s not in ("N/A", "?"))) <= 1
         ns_lists = [r['ns_list'] for r in local_results if r.get('status') == "NOERROR" and 'ns_list' in r]
         ns_consistent = len(set(tuple(l) for l in ns_lists)) <= 1 if ns_lists else True
         
@@ -1471,7 +1504,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 
     counters = {'done': 0}
     total = len(zones)
-    stop_event, watcher, watchdog_state = start_phase_watchdog("Checking Zones", counters, total, active_items, lock, log_enabled=settings.enable_execution_log)
+    stop_event, watcher, watchdog_state = start_phase_watchdog("Checking Zones", counters, total, active_items, lock, settings=settings, log_enabled=settings.enable_execution_log)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_check_zone, dom, srvs) for dom, srvs in zones.items()]
         concurrent.futures.wait(futures)
@@ -1795,7 +1828,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     counters = {'done': 0}
     total = len(tasks)
     
-    stop_event, watcher, watchdog_state = start_phase_watchdog("Record Consistency", counters, total, active_items, lock, log_enabled=settings.enable_execution_log)
+    stop_event, watcher, watchdog_state = start_phase_watchdog("Record Consistency", counters, total, active_items, lock, settings=settings, log_enabled=settings.enable_execution_log)
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings.max_threads) as executor:
         futures = [executor.submit(_worker, *t) for t in tasks]
         concurrent.futures.wait(futures)
@@ -2367,27 +2400,13 @@ def main():
             logging.info(f"Report Generated [{label}]: {path}")
     
     total = len(results)
-    success = sum(1 for r in results if r['status'] == "NOERROR")
+    success = sum(1 for r in results if r.get('status') == "NOERROR")
     div = sum(1 for r in results if r.get('internally_consistent') == "DIV!")
     sync_issues = len({
         z["domain"] for z in zone_results
         if z.get("status") != "NOERROR" or z.get("zone_is_synced") is False
     })
     script_duration = time.time() - script_start_time
-    
-    sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
-    security_available = sec_score is not None
-    privacy_available = priv_score is not None
-    scores_available = security_available and privacy_available
-    avg_score = ((sec_score + priv_score) / 2) if scores_available else (sec_score if security_available else None)
-    grade = (
-        ui.format_grade(avg_score)
-        .replace("\033[92m", "")
-        .replace("\033[91m", "")
-        .replace("\033[93m", "")
-        .replace("\033[0m", "")
-        if avg_score is not None else "N/A"
-    )
     
     # (Takeaways already calculated above for report_data)
 
