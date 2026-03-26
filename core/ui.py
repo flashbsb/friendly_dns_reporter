@@ -252,18 +252,9 @@ def _print_boxed_card(title, lines, width=80):
     print(f"  └{'─' * (width - 2)}┘")
 
 def print_phase_header(name):
-    if "1" in name:
-        # Layout: IP ADDRESS | Reliability (Ping) | U53 (ms) | T53 (ms) | DoT (ms) | DoH (ms) | Sc | Status
-        print(f"  {'IP ADDRESS':15} | {'RELIABILITY (PING)':20} | {'U53 (ms)':8} | {'T53 (ms)':8} | {'DoT (ms)':8} | {'DoH (ms)':8} | {'Sc':3} | Status")
-        print("-" * 111)
-    elif "2" in name:
-        # Layout: SERVER | SOA SERIAL | LATENCY | Sc | AA | AXFR
-        print(f"  {'SERVER':15} | {'SOA SERIAL':16} | {'LATENCY':8} | {'Sc':3} | {'AA':4} | {'AXFR':12}")
-        print("-" * 72)
-    elif "3" in name:
-        # Layout: SERVER | TYPE | STATUS | LATENCY | Sync
-        print(f"  {'SERVER':15} | {'TYPE':5} | {'STATUS':12} | {'LATENCY':8} | Sync")
-        print("-" * 55)
+    # Headers now inline with data rows — no separate header line needed.
+    # Just print a separator to delimit the section.
+    print("-" * 100)
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None, score_breakdown=None):
     width = 80
@@ -439,8 +430,8 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     conn = _get_tree_connector(level, is_last)
     tree_indent = "   " * level
 
-    # Layout: GROUP (Removed) | IP ADDRESS | Reliability (PING) | U53 | T53 | DoT | DoH | Sc | Status
-    print(f"  {conn}{srv:15} | {rel_str:20} | {u53_lat:8} | {t53_lat:8} | {dot_lat:8} | {doh_lat:8} | {score_str} | {alive_str}")
+    # Layout: IP ADDRESS= srv | RELIABILITY (PING)= rel_str | U53 (ms)= u53 | T53 (ms)= t53 | DoT (ms)= dot | DoH (ms)= doh | Sc= score | Status= alive
+    print(f"  {conn}IP ADDRESS={DIM} {RESET}{srv} | RELIABILITY (PING)={rel_str} | U53 (ms)={u53_lat} | T53 (ms)={t53_lat} | DoT (ms)={dot_lat} | DoH (ms)={doh_lat} | Sc={score_str} | Status={alive_str}")
 
     profile = data.get("server_profile", "unknown")
     resolver_class = data.get("classification", "UNKNOWN")
@@ -586,8 +577,8 @@ def print_zone_detail(srv, domain, res, level=2, is_last=False):
     serial_out = serial_str if status == "NOERROR" else f"{FAIL}{_compact_status(status, 12):16}{RESET}"
     axfr_out = _ellipsize(axfr_str, 12)
     
-    # Layout: DOMAIN (Removed) | GROUP (Removed) | SERVER | SOA SERIAL | LATENCY | Sc | AA | AXFR
-    print(f"  {conn}{server_str:15} | {serial_out:16} | {lat_str:8} | {score_str} | {aa_str} | {axfr_clr}{axfr_out:12}{RESET}")
+    # Layout: SERVER= srv | SOA SERIAL= serial_out | LATENCY= lat_str | Sc= score_str | AA= aa_str | AXFR= axfr_out
+    print(f"  {conn}SERVER={DIM} {RESET}{server_str} | SOA SERIAL={serial_out} | LATENCY={lat_str} | Sc={score_str} | AA={aa_str} | AXFR={axfr_clr}{axfr_out}{RESET}")
 
     dnssec = res.get("dnssec")
     dnssec_str = f"{OK}SIGNED{RESET}" if dnssec is True else (f"{FAIL}UNSIGNED{RESET}" if dnssec is False else "N/E")
@@ -701,8 +692,8 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
     # Tree Connector
     conn = _get_tree_connector(level, is_last)
     
-    # Layout: TARGET (Removed) | GROUP (Removed) | SERVER | TYPE | STATUS | LATENCY | Sync
-    return f"  {conn}{server_str:15} | {INFO}{rtype:5}{RESET} | {status_clr}{status_str:12}{RESET} | {lat_str:8} | {consistency_str}"
+    # Layout: SERVER= server_str | TYPE= rtype | STATUS= status_str | LATENCY= lat_str | Sync= consistency_str
+    return f"  {conn}SERVER={DIM} {RESET}{server_str} | TYPE={INFO}{rtype}{RESET} | STATUS={status_clr}{status_str}{RESET} | LATENCY={lat_str} | Sync={consistency_str}"
 
 def print_record_findings(findings):
     """Print semantic findings/warnings for a specific record."""
