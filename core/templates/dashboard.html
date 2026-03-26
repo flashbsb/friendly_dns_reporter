@@ -881,7 +881,6 @@
                     DoH Conn/Probe: ${this.highlight(`${this.fmtLatency(d.port443_conn_lat, 0)} / ${this.fmtLatency(d.doh_lat, 0)}`)} |
                     DNSSEC/EDNS0/ECS/QNAME/Cookies/WebRisk/OpenRes: ${this.highlight(`${this.fmtLatency(d.dnssec_lat, 0)} / ${this.fmtLatency(d.edns0_lat, 0)} / ${this.fmtLatency(d.ecs_lat, 0)} / ${this.fmtLatency(d.qname_min_lat, 0)} / ${this.fmtLatency(d.cookies_lat, 0)} / ${this.fmtLatency(d.web_risk_lat, 0)} / ${this.fmtLatency(d.open_resolver_lat, 0)}`)} |
                     Probe Avg: ${this.highlight(this.fmtLatency(d.probe_latency_avg, 1))} |
-                    Coverage: ${this.highlight(`${d.probe_coverage_ratio ?? 'N/A'}%`)} |
                     Confidence: ${d.confidence || '-'} |
                     Obs UDP53/TCP53/ECS/QNAME/Cookies: ${this.highlight(`${d.udp53_probe_timing_source || '-'}:${d.udp53_probe_failure_reason || '-'} / ${d.tcp53_probe_timing_source || '-'}:${d.tcp53_probe_failure_reason || '-'} / ${d.ecs_timing_source || '-'}:${d.ecs_failure_reason || '-'} / ${d.qname_min_timing_source || '-'}:${d.qname_min_failure_reason || '-'} / ${d.cookies_timing_source || '-'}:${d.cookies_failure_reason || '-'}`)} |
                     Web80/Web443: ${this.highlight(`${(d.web_risk_status && d.web_risk_status['80']) || (d.web_risk_status && d.web_risk_status[80]) || '-'} / ${(d.web_risk_status && d.web_risk_status['443']) || (d.web_risk_status && d.web_risk_status[443]) || '-'}`)} |
@@ -1006,11 +1005,15 @@
                     <td>${d.ping || '-'}</td><td>${d.recursion || '-'}</td><td>${d.dot || '-'}</td><td>${d.doh || '-'}</td><td>${d.nsid || '-'}</td><td>${d.wildcard_detected ? 'YES' : 'NO'}</td>
                 </tr>`;
                 html += `<tr class="detail-row"><td colspan="13">
+                    Domain Parent: ${this.highlight(d.domain_parent || '-')} |
                     Answers: ${this.highlight(d.answers || '-')} |
                     Wildcard Answers: ${this.highlight((d.wildcard_answers && d.wildcard_answers.length) ? d.wildcard_answers.join(' | ') : '-')} |
                     Telemetry: AD Flag: <b>${d.ad ? 'AD+' : 'AD-'}</b> | Amplification: <b>${this.fmtAmplification(d.query_size, d.response_size)}</b> | NSID: ${this.highlight(d.nsid || '-')} |
                     Timings First/Avg/Min/Max: ${this.highlight(`${this.fmtLatency(d.latency_first, 1)} / ${this.fmtLatency(d.latency_avg, 1)} / ${this.fmtLatency(d.latency_min, 1)} / ${this.fmtLatency(d.latency_max, 1)}`)} |
-                    Chain/MX25/Wildcard: ${this.highlight(`${this.fmtLatency(d.chain_latency, 1)} / ${this.fmtLatency(d.mx_port25_latency, 1)} / ${this.fmtLatency(d.wildcard_latency, 1)}`)}
+                    Jitter: ${this.highlight(this.fmtLatency(d.latency_jitter, 1))} |
+                    Chain Depth: ${d.chain_depth || 0} |
+                    Chain/MX25/Wildcard: ${this.highlight(`${this.fmtLatency(d.chain_latency, 1)} / ${this.fmtLatency(d.mx_port25_latency, 1)} / ${this.fmtLatency(d.wildcard_latency, 1)}`)} |
+                    Evidence: ${this.highlight(this.fmtProbeEvidence(d, 'main', 'Main'))}
                 </td></tr>`;
                 if (d.findings && d.findings.length > 0) {
                     html += `<tr class="detail-row"><td colspan="13">
