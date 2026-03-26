@@ -211,6 +211,15 @@ def print_phase(name, objective=None):
         print(f"  {objective}")
     print("")
 
+def print_phase_progress(done, total, label):
+    """Print a compact progress bar for phase processing."""
+    width = 20
+    pct = done / total if total > 0 else 0
+    filled = int(pct * width)
+    bar = f"{'█' * filled}{'░' * (width - filled)}"
+    pct_str = f"{pct * 100:.0f}%"
+    print(f"  PROGRESS ▏{bar}▏ {pct_str} ({done}/{total}) {label}")
+
 def print_phase_snapshot(title, items, interpretation=None):
     width = 80
     print(f"\n  ┏━ {BOLD}{title.upper()}{RESET} {'━' * (width - len(title) - 6)}┓")
@@ -254,9 +263,8 @@ def _print_boxed_card(title, lines, width=80):
     print(f"  └{'─' * (width - 2)}┘")
 
 def print_phase_header(name):
-    # Headers now inline with data rows — no separate header line needed.
-    # Just print a separator to delimit the section.
-    print("-" * 100)
+    # Clean separator between phase intro and data rows
+    print(f"  {'─' * 78}")
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None, score_breakdown=None):
     width = 80
@@ -618,34 +626,30 @@ def print_zone_detail(srv, domain, res, level=2, is_last=False):
     print(f"{last_sub_prefix}{BOLD}Evidence{RESET} : {soa_ev} | AXFR={axfr_ev}")
 
 def print_zone_audit_block(domain, audit):
-    """Print a concise summary of advanced zone diagnostics."""
-    print(f"  {INFO}>> [ZONE AUDIT: {domain}]{RESET}")
-    
-    # DNSSEC
+    """Print zone audit as a boxed block for visual clarity."""
     sec_str = f"{OK}SIGNED{RESET}" if audit.get("dnssec") else f"{WARN}UNSIGNED{RESET}"
-    
-    # Timers
     t_ok = audit.get("timers_ok", True)
     tim_str = f"{OK}RFC-OK{RESET}" if t_ok else f"{FAIL}NON-COMPLIANT{RESET}"
-    
-    # MNAME (Optional)
     m_reach = audit.get("mname_reachable")
     m_str = ""
     if m_reach:
         upper_reach = str(m_reach).upper()
         m_clr = OK if "(UP)" in upper_reach else (FAIL if "(DOWN)" in upper_reach else WARN)
-        m_str = f" [MNAME: {m_clr}{m_reach}{RESET}]"
-        
-    # Web Risk
+        m_str = f" MNAME:{m_clr}{m_reach}{RESET}"
     w_risk = audit.get("web_risk", False)
     web_str = f"{FAIL}EXPOSED!{RESET}" if w_risk else f"{OK}SAFE{RESET}"
-    
-    print(f"     [DNSSEC: {sec_str}] [TIMERS: {tim_str}]{m_str} [WEB-RISK: {web_str}]")
-    
+    glue_ok = audit.get("glue_ok")
+    glue_str = f"{OK}OK{RESET}" if glue_ok else (f"{FAIL}FAIL{RESET}" if glue_ok is False else f"{WARN}N/E{RESET}")
+
+    print(f"     ┌─ {BOLD}ZONE AUDIT: {domain}{RESET} ──────────────────────────────────────")
+    print(f"     │ DNSSEC: {sec_str}  Timers: {tim_str}{m_str}")
+    print(f"     │ Glue: {glue_str}  Web-Risk: {web_str}")
     if not t_ok and audit.get("timers_issues"):
         for issue in audit["timers_issues"]:
-            print(f"       {WARN}! {issue}{RESET}")
-    print("") # Spacer
+            print(f"     │ {WARN}⚠ {issue}{RESET}")
+    if audit.get("axfr_exposed"):
+        print(f"     │ {FAIL}⚠ AXFR VULNERABLE — zone transfer accepted{RESET}")
+    print(f"     └─────────────────────────────────────────────────────────")
 
 def print_warning(msg):
     print(f"  {WARN}{msg}{RESET}")
@@ -696,20 +700,22 @@ def format_result(target, group, server, rtype, status, latency, is_consistent, 
     return f"  {conn}SERVER={DIM} {RESET}{server_str} | TYPE={INFO}{rtype}{RESET} | STATUS={status_clr}{status_str}{RESET} | LATENCY={lat_str} | Sync={consistency_str}"
 
 def print_record_findings(findings):
-    """Print semantic findings/warnings for a specific record."""
+    """Print semantic findings/warnings as a boxed block for visual clarity."""
     if not findings:
         return
         
+    print(f"       ┌─ {BOLD}FINDINGS{RESET} ─────────────────────────────────────────────┐")
     for finding in findings:
-        # Identify severity (simple keyword matching)
         if any(w in finding.upper() for w in ["INVAL!", "MISSING", "REQUIRED", "DANGLING"]):
             clr = FAIL
         elif any(w in finding.upper() for w in ["PERMISSIVE", "INSECURE", "HIGH", "MONITORING"]):
             clr = WARN
         else:
             clr = INFO
-            
-        print(f"       {clr}-> {finding}{RESET}")
+        # Truncate long findings to fit box
+        display = finding if len(finding) <= 55 else finding[:52] + "..."
+        print(f"       │ {clr}⚠ {display}{RESET}")
+    print(f"       └─────────────────────────────────────────────────────────┘")
 
 def print_record_context(record, level=3):
     """Print structured diagnostic context for the record."""
@@ -939,63 +945,93 @@ def print_legend_advanced_analytics():
 
 
 def print_advanced_analytics(advanced):
-    """Print the consolidated advanced analytics to terminal."""
+    """Print the consolidated advanced analytics with visual bars and structured cards."""
     width = 80
 
-    # Worst & Best Servers
+    # Worst & Best Servers with visual progress bars
     wb = advanced.get("worst_best_servers", {})
     worst = wb.get("worst", [])
     best = wb.get("best", [])
     if worst or best:
-        print(f"\n  {BOLD}ADVANCED ANALYTICS: SERVER RANKINGS{RESET}")
-        print(f"  {'═' * width}")
+        print(f"\n  {BOLD}SERVER HEALTH RANKINGS{RESET}")
+        print(f"  {'─' * width}")
 
         if worst:
-            print(f"  {FAIL}WORST SERVERS:{RESET}")
+            print(f"  {FAIL}WORST SERVERS{RESET}")
             for i, s in enumerate(worst):
+                bar_len = 12
+                filled = int((s['total'] / 100) * bar_len) if s['total'] > 0 else 0
+                bar = f"{'█' * filled}{'░' * (bar_len - filled)}"
                 score_clr = get_score_color(s['total'])
-                issues = ", ".join(s.get("issues", []))
-                print(f"    {i+1}. {s['server']:15} Score={score_clr}{s['total']}{RESET} | Infra={s['infra_score']} | Zones={s['zone_avg']} | Records={s['record_consistency']} | {WARN}{issues}{RESET}")
+                issues = ", ".join(s.get("issues", [])) or "Healthy"
+                print(f"    #{i+1} {s['server']:15} {bar} {score_clr}{s['total']:3d}{RESET}  {issues}")
 
         if best:
-            print(f"\n  {OK}BEST SERVERS:{RESET}")
+            print(f"\n  {OK}BEST SERVERS{RESET}")
             for i, s in enumerate(best):
+                bar_len = 12
+                filled = int((s['total'] / 100) * bar_len) if s['total'] > 0 else 0
+                bar = f"{'█' * filled}{'░' * (bar_len - filled)}"
                 score_clr = get_score_color(s['total'])
-                issues = ", ".join(s.get("issues", []))
-                print(f"    {i+1}. {s['server']:15} Score={score_clr}{s['total']}{RESET} | Infra={s['infra_score']} | Zones={s['zone_avg']} | Records={s['record_consistency']} | {OK}{issues}{RESET}")
+                issues = ", ".join(s.get("issues", [])) or "Healthy"
+                print(f"    #{i+1} {s['server']:15} {bar} {score_clr}{s['total']:3d}{RESET}  {issues}")
 
         dead = wb.get("dead_count", 0)
         if dead:
-            print(f"\n  {FAIL}DEAD: {dead} server(s) scored 0{RESET}")
+            print(f"\n  {FAIL}⚠ {dead} dead server(s) scored 0{RESET}")
 
-    # Cross-Phase Correlations
+    # Cross-Phase Correlations with structured cards
     cross = advanced.get("cross_phase_correlations", [])
     if cross:
         print(f"\n  {BOLD}CROSS-PHASE CORRELATIONS{RESET}")
         print(f"  {'─' * width}")
-        for c in cross[:10]:
+        for c in cross[:8]:
             pattern_clr = FAIL if c['pattern'] == "degraded" else WARN
-            print(f"    {pattern_clr}[{c['pattern'].upper():8}]{RESET} {c['server']:15} infra={len(c['infra'])} flags | zones={len(c['zones'])} flags | records={len(c['records'])} flags")
+            p_label = c['pattern'].upper()
+            flags = (
+                [f"infra:{f}" for f in c['infra']] +
+                [f"zone:{f}" for f in c['zones']] +
+                [f"rec:{f}" for f in c['records']]
+            )
+            print(f"  ┌─ {c['server']:15} {pattern_clr}{p_label:8}{RESET} {'─' * 40}")
+            # Print flags in rows of ~5
+            for j in range(0, len(flags), 5):
+                chunk = flags[j:j+5]
+                print(f"  │ [{'] ['.join(chunk)}]")
+            print(f"  └{'─' * 58}")
 
-    # Problem Ranking
+    # Problem Ranking with severity badges
     problems = advanced.get("problem_ranking", [])
     if problems:
         print(f"\n  {BOLD}TOP PROBLEMS BY SEVERITY{RESET}")
         print(f"  {'─' * width}")
-        for p in problems[:10]:
+        for p in problems[:12]:
             sev_clr = FAIL if p['severity'] >= 7 else (WARN if p['severity'] >= 5 else INFO)
-            print(f"    {sev_clr}[{p['severity']:2d}] {p['category']:8}{RESET} {p['subject']:40} {p['detail']}")
+            sev_badge = f"{sev_clr}[{p['severity']:2d}]{RESET}"
+            cat_clr = FAIL if p['severity'] >= 7 else (WARN if p['severity'] >= 5 else INFO)
+            print(f"  {sev_badge} {cat_clr}{p['category']:8}{RESET} {p['subject']:35} {p['detail']}")
 
-    # Coverage
+    # Coverage Reliability with visual bars
     cov = advanced.get("coverage_reliability", {})
     if cov:
         print(f"\n  {BOLD}COVERAGE RELIABILITY{RESET}")
         print(f"  {'─' * width}")
-        for k, v in cov.get("phase1", {}).items():
-            print(f"    Phase1 {k:15}: {v}")
-        p2 = cov.get("phase2", {})
-        for k, v in p2.items():
-            print(f"    Phase2 {k:15}: {v}")
-        p3 = cov.get("phase3", {})
-        for k, v in p3.items():
-            print(f"    Phase3 {k:15}: {v}")
+        for phase_key, phase_label in [("phase1", "Phase 1"), ("phase2", "Phase 2"), ("phase3", "Phase 3")]:
+            phase_data = cov.get(phase_key, {})
+            if not phase_data:
+                continue
+            for k, v in phase_data.items():
+                if phase_key == "phase1" and k == "sample_size":
+                    continue
+                # Extract percentage from string like "5/5 (100%)"
+                pct_str = ""
+                if isinstance(v, str) and "%" in v:
+                    try:
+                        pct = int(v.split("(")[1].split("%")[0])
+                        bar_len = 8
+                        filled = int((pct / 100) * bar_len)
+                        pct_clr = OK if pct >= 80 else (WARN if pct >= 50 else FAIL)
+                        pct_str = f" {'█' * filled}{'░' * (bar_len - filled)} {pct_clr}{pct}%{RESET}"
+                    except (IndexError, ValueError):
+                        pass
+                print(f"    {phase_label} {k:15}: {v}{pct_str}")
