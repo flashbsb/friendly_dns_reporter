@@ -783,64 +783,158 @@ def format_progress_status(active_items=None, idle_for=0.0):
     return suffix
 
 def print_legend_phase1_table():
-    """Legend for Phase 1 results table (Infrastructure)."""
-    _print_boxed_card("PHASE 1 HELP: Infrastructure Check", [
-        f"{BOLD}RELIABILITY{RESET} : Ping loss visual bar and percentage.",
-        f"{BOLD}U53 / T53 {RESET}    : DNS Port 53 Availability (UDP/TCP).",
-        f"{BOLD}DoT / DoH {RESET}    : Encrypted DNS Latency (Po853/Po443).",
-        f"{BOLD}Sc / Status{RESET}   : Individual infra score and reachability.",
-        f"{BOLD}Resolver {RESET}     : PUBLIC/RESTRICTED status and Confidence (H/M/L).",
-        f"{BOLD}Features {RESET}     : [S]igned [E]dns [K]ookies [Q]name [X]ecs"
+    """Legend for Phase 1 results table (Infrastructure) — full field reference."""
+    _print_boxed_card("PHASE 1 HELP: Infrastructure Check — Field Reference", [
+        f"{BOLD}IP ADDRESS{RESET}       : Target resolver or authoritative server IP.",
+        f"{BOLD}RELIABILITY{RESET}      : Ping loss visual bar ({OK}●{RESET}=OK, {FAIL}○{RESET}=Lost) + loss %." ,
+        f"{BOLD}U53 (ms){RESET}         : UDP port 53 DNS responsiveness and latency.",
+        f"{BOLD}T53 (ms){RESET}         : TCP port 53 DNS responsiveness and latency.",
+        f"{BOLD}DoT (ms){RESET}         : DNS-over-TLS (TCP/853) encrypted latency.",
+        f"{BOLD}DoH (ms){RESET}         : DNS-over-HTTPS (TCP/443) encrypted latency.",
+        f"{BOLD}Sc{RESET}               : Infrastructure Score (0-100). Weighted by profile.",
+        f"{BOLD}Status{RESET}           : {OK}ALIVE{RESET} = reachable, {FAIL}DEAD{RESET} = unreachable.",
+        f"",
+        f"{BOLD}Profile{RESET}          : recursive / authoritative / mixed / unknown.",
+        f"{BOLD}Resolver{RESET}         : {FAIL}PUBLIC{RESET}=open recursion, {OK}RESTRICTED{RESET}=controlled, {INFO}UNKNOWN{RESET}.",
+        f"{BOLD}Confidence{RESET}       : {OK}HIGH{RESET}/{WARN}MEDIUM{RESET}/{FAIL}LOW{RESET} — reliability of the classification.",
+        f"{BOLD}Version{RESET}          : DNS software version. {OK}HIDDEN{RESET}=good, {FAIL}revealed{RESET}=leak.",
+        f"",
+        f"{BOLD}Caps{RESET}             : [S]DNSSEC [E]DNS [K]ookies [Q]name-Min [X]ECS." ,
+        f"{BOLD}WebRisk{RESET}          : Open web ports (80/443) on the same host. Context, not DNS flaw.",
+        f"{BOLD}DNSSEC Mode{RESET}      : DATA_SERVING / VALIDATING / PARTIAL / UNSIGNED / N/A.",
+        f"{BOLD}QNAME-Min{RESET}        : {OK}HIGH{RESET}/{WARN}MEDIUM{RESET}/{FAIL}LOW{RESET} — heuristic query name minimization confidence.",
     ])
 
 def print_legend_phase1_analytics():
-    """Legend for Phase 1 analytical summary."""
+    """Legend for Phase 1 analytical summary — full criteria."""
     _print_boxed_card("PHASE 1 ANALYTICS CRITERIA", [
-        f"{BOLD}Infra Health{RESET} : Average score (100% = Full modern security).",
-        f"{BOLD}Adoption{RESET}     : Percentage of servers with modern features.",
-        f"{BOLD}Net-Health{RESET}   : Composite latency index (not ping alone)."
+        f"{BOLD}Infra Health{RESET}     : Average infrastructure score across alive servers (100% = full modern security).",
+        f"{BOLD}Transport Consist.{RESET}: % of servers where UDP53 and TCP53 both responded consistently.",
+        f"{BOLD}Control Plane{RESET}    : % of servers with version hidden and recursion restricted.",
+        f"{BOLD}Exposure Posture{RESET} : Ratio of PUBLIC vs RESTRICTED vs UNKNOWN resolvers.",
+        f"{BOLD}Observability{RESET}    : % of probes that returned timing data (not N/A or timeout).",
+        f"{BOLD}Probe Coverage{RESET}   : % of repeated probe samples that actually measured latency.",
+        f"{BOLD}Probe Jitter{RESET}     : Average latency spread (max-min) across repeated probes.",
+        f"{BOLD}Adoption{RESET}         : % of servers supporting modern features (EDNS, Cookies, QNAME, ECS).",
+        f"{BOLD}Net-Health{RESET}       : Composite latency index combining ping + DNS + encrypted transport.",
     ])
 
 def print_legend_phase2_table():
-    """Legend for Phase 2 results table (Zone Integrity)."""
-    _print_boxed_card("PHASE 2 HELP: Zone Integrity Check", [
-        f"{BOLD}SOA SERIAL{RESET} : Version sync status ({OK}OK{RESET}=Synced | {FAIL}FAIL{RESET}=Desync).",
-        f"{BOLD}LATENCY   {RESET} : Response time for authoritative probes.",
-        f"{BOLD}AA / AXFR {RESET} : Auth-Answer flag and Zone Transfer vulnerability.",
-        f"{BOLD}Timers    {RESET} : SOA RFC-compliance check (Ref/Ret/Exp/Min)."
+    """Legend for Phase 2 results table (Zone Integrity) — full field reference."""
+    _print_boxed_card("PHASE 2 HELP: Zone Integrity Check — Field Reference", [
+        f"{BOLD}SERVER{RESET}           : DNS server that answered the zone query.",
+        f"{BOLD}SOA SERIAL{RESET}       : Zone version. {OK}OK(serial){RESET}=synced, {FAIL}FAIL(serial){RESET}=desync.",
+        f"{BOLD}LATENCY{RESET}          : SOA query response time (UDP 53).",
+        f"{BOLD}Sc{RESET}               : Zone Score (0-100). Sync + authority + AXFR + DNSSEC + CAA.",
+        f"{BOLD}AA{RESET}               : Authoritative Answer flag. {OK}YES{RESET}=expected, {FAIL} NO{RESET}=lame delegation.",
+        f"{BOLD}AXFR{RESET}             : Zone transfer status. {OK}REFUSED{RESET}=good, {FAIL}XFR-OK{RESET}=exposed.",
+        f"",
+        f"{BOLD}Audit > Scope{RESET}    : {OK}FULL{RESET}=complete audit, {WARN}SOA_ONLY{RESET}=limited (connectivity issue).",
+        f"{BOLD}Audit > DNSSEC{RESET}   : Whether the zone appeared signed from this server.",
+        f"{BOLD}Audit > CAA{RESET}      : Number of CAA records (SSL certificate authority policy).",
+        f"{BOLD}Audit > NS-Consist.{RESET}: Whether NS answers matched across servers for same zone.",
+        f"",
+        f"{BOLD}Timers{RESET}           : SOA timers (Refresh/Retry/Expire/MinTTL). {INFO}Cyan{RESET}=RFC-ok, {WARN}Yellow{RESET}=out of range.",
+        f"{BOLD}Timers > RFC-OK{RESET}  : All timers within RFC 1912 recommended ranges.",
+        f"{BOLD}Timers > RFC-FAIL{RESET}: At least one timer outside RFC range (policy risk).",
+        f"",
+        f"{BOLD}Transit{RESET}          : Ping, SOA UDP, NS UDP latencies for this zone/server pair.",
+        f"{BOLD}Evidence{RESET}         : Detailed DNS probe metadata (protocol, rcode, flags, amplification, aa, ra).",
     ])
 
 def print_legend_phase2_analytics():
-    """Legend for Phase 2 analytical summary."""
+    """Legend for Phase 2 analytical summary — full criteria."""
     _print_boxed_card("PHASE 2 ANALYTICS CRITERIA", [
-        f"{BOLD}Zone Compliance{RESET}: Overall adherence to security standards.",
-        f"{BOLD}Sync Health    {RESET}: Percentage of zones fully synchronized.",
-        f"{BOLD}CAA Adoption   {RESET}: SSL policy visibility (RFC 8659)."
+        f"{BOLD}Zone Compliance{RESET}  : % of zone checks with all audit flags passing (DNSSEC, timers, NS, CAA).",
+        f"{BOLD}Sync Health{RESET}      : % of zones where serial matched across all tested servers.",
+        f"{BOLD}Authority Integrity{RESET}: % of zones with AA flag present when expected.",
+        f"{BOLD}Transfer Exposure{RESET} : % of zones where AXFR was refused (100% = fully secure).",
+        f"{BOLD}Zone Hygiene{RESET}     : Combined metric: DNSSEC + CAA + timer compliance.",
+        f"{BOLD}CAA Adoption{RESET}     : % of zones with at least one CAA record (RFC 8659).",
+        f"{BOLD}Zone Response Health{RESET}: % health based on average zone latency vs SOA latency threshold.",
+        f"{BOLD}Fallback Dependency{RESET}: % of zones that required SOA fallback query (primary failed).",
+        f"{BOLD}Scope Confidence{RESET}  : % of zones with FULL scope (SOA_ONLY limits audit depth).",
+        f"{BOLD}Zone Stability{RESET}   : % of SOA/NS repeated probes that returned consistent serial.",
     ])
 
 def print_legend_phase3_table():
-    """Legend for Phase 3 results table (Record Consistency)."""
-    _print_boxed_card("PHASE 3 HELP: Record Consistency Check", [
-        f"{BOLD}STATUS {RESET}      : {OK}NOERROR{RESET}, {WARN}NXDOMAIN{RESET}, {FAIL}FAIL{RESET} states.",
-        f"{BOLD}Sync   {RESET}      : Record stability check ({OK}OK{RESET} or {WARN}DIV!{RESET}).",
-        f"{BOLD}AD+ flag{RESET}     : DNSSEC Authenticated Data bit from resolver.",
-        f"{BOLD}Amplification{RESET}: Byte ratio (High risk if >10x)."
+    """Legend for Phase 3 results table (Record Consistency) — full field reference."""
+    _print_boxed_card("PHASE 3 HELP: Record Consistency Check — Field Reference", [
+        f"{BOLD}SERVER{RESET}           : DNS server that answered the query.",
+        f"{BOLD}TYPE{RESET}             : Record type queried (A, AAAA, MX, TXT, SOA, CNAME, NS, etc.).",
+        f"{BOLD}STATUS{RESET}           : DNS response code. {OK}NOERROR{RESET}=success, {WARN}NXDOMAIN{RESET}=not found, {FAIL}FAIL{RESET}=error.",
+        f"{BOLD}LATENCY{RESET}          : Response time for the representative query.",
+        f"{BOLD}Sync{RESET}             : Repeated query consistency. {OK}[OK]{RESET}=matched, {WARN}[DIV!]{RESET}=diverged.",
+        f"",
+        f"{BOLD}Ping{RESET}             : Phase 1 ping status reused as transport context.",
+        f"{BOLD}Recursion{RESET}        : Phase 1 recursion status reused as context.",
+        f"{BOLD}DoT / DoH{RESET}        : Phase 1 encrypted DNS capability markers.",
+        f"{BOLD}NSID{RESET}             : Name Server ID (EDNS option). Identifies the server instance.",
+        f"{BOLD}Wildcard{RESET}         : Whether random subdomains resolved (zone-level wildcard).",
+        f"",
+        f"{BOLD}Answers{RESET}          : Truncated preview of the DNS response records.",
+        f"{BOLD}AD Flag{RESET}          : DNSSEC Authenticated Data bit. {OK}AD+{RESET}=validated chain.",
+        f"{BOLD}Amplification{RESET}    : Response/Query byte ratio. {FAIL}>10x{RESET} = potential amplification risk.",
+        f"{BOLD}Timings{RESET}          : First/Avg/Min/Max latency across repeated queries.",
+        f"{BOLD}Jitter{RESET}           : Latency spread (max-min). High = unstable network or load balancing.",
+        f"{BOLD}Chain Depth{RESET}      : Number of hops to resolve. {OK}Direct{RESET}=1 hop, {WARN}/{FAIL}=indirect.",
+        f"{BOLD}Chain/MX25/Wildcard{RESET}: Supplementary latencies: chain resolution, MX port 25, wildcard probe.",
     ])
 
 def print_legend_phase3_analytics():
-    """Legend for Phase 3 analytical summary."""
+    """Legend for Phase 3 analytical summary — full criteria."""
     _print_boxed_card("PHASE 3 ANALYTICS CRITERIA", [
-        f"{BOLD}Stability Index{RESET}: Result consistency across sequential checks.",
-        f"{BOLD}Finding Density{RESET}: Average volume of issues per query.",
-        f"{BOLD}Network Jitter {RESET}: Timing variance across repeated probes."
+        f"{BOLD}Stability Index{RESET}  : % of repeated queries that returned identical answers.",
+        f"{BOLD}Finding Density{RESET}  : Average number of semantic findings per query result.",
+        f"{BOLD}Record Response Health{RESET}: % health based on average record latency vs threshold.",
+        f"{BOLD}Network Jitter{RESET}   : Average latency spread (max-min) across all repeated probes.",
     ])
 
 def print_legend_summary():
-    """Legend for Final Audit Summary."""
-    _print_boxed_card("FINAL DASHBOARD LEGEND & CRITERIA", [
-        f"{INFO}SECURITY SCORE{RESET} : DNSSEC, CAA, AXFR, Cookies, OpenRes.",
-        f"{INFO}PRIVACY SCORE {RESET} : DoT, DoH, QNAME-Min, ECS Masking.",
-        f"{INFO}GRADING SYSTEM{RESET} : {OK}A/A+(90+){RESET} | {WARN}C/D(60-80){RESET} | {FAIL}F(<60){RESET}."
+    """Legend for Final Audit Summary — full scoring explanation."""
+    _print_boxed_card("FINAL DASHBOARD LEGEND & SCORING CRITERIA", [
+        f"{BOLD}SECURITY SCORE{RESET} (0-100): Weighted combination of:",
+        f"  DNSSEC data serving (15%), CAA presence (10%), AXFR blocked (15%),",
+        f"  Cookies (10%), EDNS support (10%), Resolver restricted (15%),",
+        f"  Web ports closed (10%), QNAME-Min (10%), Version hidden (5%).",
+        f"",
+        f"{BOLD}PRIVACY SCORE{RESET} (0-100): Weighted combination of:",
+        f"  DoT support (30%), DoH support (30%), QNAME-Min HIGH (20%),",
+        f"  ECS disabled (20%). Only applies when recursive servers are evaluated.",
+        f"",
+        f"{BOLD}GLOBAL GRADE{RESET}: Derived from available scores.",
+        f"  {OK}A+ (95+){RESET} | {OK}A (90+){RESET} | {OK}B (80+){RESET} | {WARN}C (70+){RESET} | {WARN}D (60+){RESET} | {FAIL}F (<60){RESET}.",
+        f"  When privacy does not apply, grade becomes security-only.",
+        f"",
+        f"{BOLD}SCORING BREAKDOWN{RESET}: Line-by-line contribution of each component.",
+        f"  {OK}✔{RESET} = positive contribution, {FAIL}✘{RESET} = negative, {INFO}•{RESET} = neutral/informational.",
+    ])
+
+def print_legend_advanced_analytics():
+    """Legend for Advanced Analytics section."""
+    _print_boxed_card("ADVANCED ANALYTICS LEGEND & CRITERIA", [
+        f"{BOLD}SERVER HEALTH INDEX{RESET} (0-100): Consolidated per-server score.",
+        f"  50% Infrastructure Score + 30% Zone Avg + 20% Record Consistency %.",
+        f"  Issues tagged: PUBLIC_RESOLVER, PING_FAIL, AXFR_EXPOSED, ZONE_DESYNC, RECORD_DIV.",
+        f"",
+        f"{BOLD}WORST/BEST SERVERS{RESET}: Top-5 lowest and highest health index.",
+        f"  Dead servers (score=0) are listed separately below the rankings.",
+        f"",
+        f"{BOLD}CROSS-PHASE CORRELATIONS{RESET}: Servers flagged in 2+ phases simultaneously.",
+        f"  {FAIL}DEGRADED{RESET} = 4+ flags across phases (critical pattern).",
+        f"  {WARN}STRESSED{RESET}  = 2-3 flags across phases (needs attention).",
+        f"  Infra flags: exposed, ping_fail, udp_fail, tcp_fail.",
+        f"  Zone flags: axfr_exposed, desync, lame.",
+        f"  Record flags: div:N, findings:N, wildcard:N.",
+        f"",
+        f"{BOLD}PROBLEM RANKING{RESET}: All problems ranked by severity (10=critical, 1=info).",
+        f"  {FAIL}[10]{RESET} PUBLIC_RESOLVER | {FAIL}[9]{RESET} AXFR_EXPOSED | {FAIL}[7]{RESET} ZONE_DESYNC",
+        f"  {WARN}[6]{RESET} RECORD_DIV | {WARN}[5]{RESET} WILDCARD/FINDINGS | {INFO}[3]{RESET} LAME_DELEGATION",
+        f"",
+        f"{BOLD}COVERAGE RELIABILITY{RESET}: % of checks that actually measured data.",
+        f"  Low coverage = results may not reflect real server behavior.",
+        f"  Phase 1: per-probe measurement rate. Phase 2: FULL vs SOA_ONLY ratio.",
+        f"  Phase 3: successful query rate and latency measurement rate.",
     ])
 
 

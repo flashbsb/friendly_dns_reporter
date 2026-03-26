@@ -673,7 +673,7 @@ def start_phase_watchdog(label, counters, total, active_items, lock, settings=No
     watcher.start()
     return stop_event, watcher, state
 
-def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engine, settings, lock):
+def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=False):
     """Phase 1: Deep Infrastructure Check (Once per server)."""
     ui.print_phase("1: Server Infrastructure", "Testing reachability, DNS service responsiveness, encryption, and exposure.")
     phase_start_time = time.time()
@@ -1143,7 +1143,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     insights["Status Alive"] = alive
     insights["Status Dead"] = dead
 
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase1_table()
 
     ui.print_phase_footer("1: Infrastructure", 
@@ -1154,12 +1154,12 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 1] ANALYTICS: {insights}")
 
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase1_analytics()
 
     return infra_results, insights
 
-def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock):
+def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=False):
     """Phase 2: Zone Integrity & SOA Synchronization."""
     ui.print_phase("2: Zone Integrity", "Checking SOA visibility, authority, synchronization, transfer exposure, and policy signals.")
     ui.print_phase_header("2: Zone Integrity")
@@ -1660,7 +1660,7 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
             insights["Zone Stability"] = "N/A (no repeated SOA/NS samples)"
 
     phase_duration = time.time() - phase_start_time
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase2_table()
 
     ui.print_phase_footer("2: Zones", {
@@ -1672,12 +1672,12 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 2] ANALYTICS: {insights}")
 
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase2_analytics()
 
     return zone_results, insights
 
-def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock):
+def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock, show_legends=False):
     """Phase 3: Parallel Record Consistency Check."""
     ui.print_phase("3: Record Consistency", "Repeating record lookups to detect divergence, dangling targets, and policy anomalies.")
     phase_start_time = time.time()
@@ -1952,7 +1952,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
             insights["Jitter Index"] = f"{(sum(jitter_values) / len(jitter_values)):.1f}ms avg spread"
 
     phase_duration = time.time() - phase_start_time
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase3_table()
 
     ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration, insights)
@@ -1960,7 +1960,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 3] ANALYTICS: {insights}")
 
-    if settings.enable_ui_legends:
+    if show_legends:
         ui.print_legend_phase3_analytics()
 
     return results, insights
@@ -2357,6 +2357,8 @@ def main():
     parser.add_argument("-g", "--groups", default=settings.file_groups, help=f"Groups CSV (default: {settings.file_groups})")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
     parser.add_argument("-p", "--phases", help="Select phases to run (e.g. 1,3 or 2)")
+    parser.add_argument("--legends", action="store_true", help="Show detailed field legends and analytics criteria (overrides ENABLE_UI_LEGENDS)")
+    parser.add_argument("--no-disclaimer", action="store_true", help="Skip the legal disclaimer at startup")
     parser.add_argument("--install-missing-deps", action="store_true", help="Allow automatic installation of missing Python dependencies")
     args = parser.parse_args()
 
@@ -2371,6 +2373,9 @@ def main():
     from core.reporting import Reporter
     import core.validators as validators
     import core.ui as ui
+
+    # Legends: CLI flag overrides settings.ini
+    show_legends = args.legends or settings.enable_ui_legends
 
     # Silence DoH/DoT HTTPS warnings only after dependency checks and imports succeed.
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -2387,7 +2392,8 @@ def main():
         run_p3 = "3" in selected
 
     ui.print_banner(VERSION)
-    ui.print_disclaimer()
+    if not args.no_disclaimer:
+        ui.print_disclaimer()
     ui.print_header(settings.max_threads, settings.consistency_checks, os.path.basename(args.domains))
     
     domains_raw, dns_groups = load_datasets(args.domains, args.groups)
@@ -2436,13 +2442,13 @@ def main():
     # Run Phase 1: Infrastructure
     p1_insights = {}
     if run_p1:
-        infra_cache, p1_insights = run_phase1_infrastructure(all_servers, srv_to_groups, srv_profiles, conn, dns_engine, settings, lock)
+        infra_cache, p1_insights = run_phase1_infrastructure(all_servers, srv_to_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=show_legends)
 
     # Run Phase 2: Zones
     zone_results = []
     p2_insights = {}
     if run_p2:
-        zone_results, p2_insights = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock)
+        zone_results, p2_insights = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=show_legends)
 
     # Run Phase 3: Records
     results = []
@@ -2469,7 +2475,7 @@ def main():
                     if group in dns_groups:
                         for server in dns_groups[group]["servers"]:
                             tasks.append((domain, target, group, server, records))
-        results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock)
+        results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock, show_legends=show_legends)
 
     # Final Analytics Calculation
     sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
@@ -2647,6 +2653,7 @@ def main():
         logging.info("=============================================================================")
         logging.info("FRIENDLY DNS REPORTER FINISHED")
         logging.info("=============================================================================")
+    # 1) Dashboard final (no legend here — printed after advanced analytics)
     ui.print_summary_table(
         total,
         success,
@@ -2657,7 +2664,7 @@ def main():
         script_duration,
         sec_score if sec_score is not None else 0,
         priv_score if priv_score is not None else 0,
-        settings.enable_ui_legends,
+        show_legend=False,
         scores_available=scores_available,
         security_available=security_available,
         privacy_available=privacy_available,
@@ -2667,7 +2674,13 @@ def main():
         score_breakdown=score_breakdown
     )
 
+    # 2) Advanced Analytics
     ui.print_advanced_analytics(advanced)
+
+    # 3) Legends (all together at the end, only when ENABLE_UI_LEGENDS = True)
+    if show_legends:
+        ui.print_legend_summary()
+        ui.print_legend_advanced_analytics()
 
 if __name__ == "__main__":
     main()
