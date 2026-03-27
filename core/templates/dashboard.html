@@ -91,7 +91,7 @@
         .help-panel { background: var(--card-strong); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow); margin-bottom: 18px; overflow: hidden; }
         .help-header { padding: 16px 18px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); }
         .help-title { font-size: 18px; font-weight: 800; }
-        .help-content { padding: 18px; display:grid; grid-template-columns: 1.1fr 1fr 1fr; gap:16px; }
+        .help-content { padding: 18px; display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
         .help-card { border: 1px solid var(--border); border-radius: 16px; padding: 16px; background: rgba(255,255,255,0.025); }
         .help-card h3 { font-size: 14px; margin-bottom: 10px; }
         .help-card p { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
@@ -101,10 +101,23 @@
 
         .help-chip { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background: rgba(94,168,255,0.14); color: var(--accent-2); font-size:11px; font-weight:800; margin-left:6px; vertical-align:middle; cursor:pointer; border:1px solid rgba(94,168,255,0.22); }
         .help-tip { position: relative; display:inline-flex; align-items:center; }
-        .help-tip .help-bubble { position:absolute; bottom:130%; left:50%; transform:translateX(-50%); width:260px; background: rgba(10,16,28,0.96); border:1px solid var(--border); color: var(--text-primary); padding:10px 12px; border-radius: 12px; box-shadow: var(--shadow); font-size:11px; line-height:1.45; opacity:0; pointer-events:none; transition:opacity .16s ease, transform .16s ease; z-index:120; }
+        .help-tip .help-bubble { position:absolute; bottom:130%; left:50%; transform:translateX(-50%); width:260px; max-width:420px; background: rgba(10,16,28,0.96); border:1px solid var(--border); color: var(--text-primary); padding:10px 12px; border-radius: 12px; box-shadow: var(--shadow); font-size:11px; line-height:1.45; opacity:0; pointer-events:none; transition:opacity .16s ease, transform .16s ease; z-index:120; }
         .help-tip:hover .help-bubble { opacity:1; transform:translateX(-50%) translateY(-4px); }
         .help-tip.open .help-bubble { opacity:1; transform:translateX(-50%) translateY(-4px); pointer-events:auto; }
         .help-tip .help-bubble strong { color:#fff; display:block; margin-bottom:4px; }
+
+        .cmd-toggle { display:inline-flex; align-items:center; gap:4px; margin-top:8px; padding:4px 8px; font-size:10px; color:var(--accent-2); background:rgba(94,168,255,0.08); border:1px solid rgba(94,168,255,0.18); border-radius:6px; cursor:pointer; font-weight:600; letter-spacing:0.02em; transition:background .15s; }
+        .cmd-toggle:hover { background:rgba(94,168,255,0.16); }
+        .cmd-block { margin-top:8px; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; }
+        .cmd-os-tabs { display:flex; gap:2px; margin-bottom:6px; background:rgba(255,255,255,0.04); border-radius:6px; padding:2px; }
+        .cmd-os-tab { flex:1; text-align:center; padding:3px 6px; font-size:9px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); border-radius:4px; cursor:pointer; font-weight:700; transition:all .15s; }
+        .cmd-os-tab.active { background:rgba(94,168,255,0.15); color:var(--accent-2); }
+        .cmd-os-tab:hover:not(.active) { color:var(--text-primary); }
+        .cmd-code { background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px; font-family:'Cascadia Code','Fira Code','Consolas','Courier New',monospace; font-size:10px; color:var(--accent-2); line-height:1.6; white-space:pre-wrap; word-break:break-all; cursor:pointer; position:relative; }
+        .cmd-code:hover { border-color:rgba(94,168,255,0.3); }
+        .cmd-code .copy-hint { position:absolute; top:4px; right:6px; font-size:8px; color:var(--text-secondary); opacity:0; transition:opacity .15s; font-family:'Segoe UI',sans-serif; text-transform:uppercase; letter-spacing:0.05em; }
+        .cmd-code:hover .copy-hint { opacity:1; }
+        .cmd-desc { font-size:9px; color:var(--text-secondary); margin-top:4px; line-height:1.4; }
 
         .charts-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 15px; margin-bottom: 24px; }
         .chart-box { background: var(--card-strong); border: 1px solid var(--border); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); }
@@ -127,9 +140,9 @@
         .phase-metric .l { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-secondary); margin-top: 4px; }
 
         .forensic-panel { background: var(--card-strong); border: 1px solid var(--border); border-radius: 18px; margin-bottom: 22px; overflow: hidden; box-shadow: var(--shadow); }
-        .panel-header { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .panel-header { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: 16px; }
         .panel-title { font-size: 14px; font-weight: 800; color: var(--accent); display: flex; align-items: center; gap: 10px; }
-        .panel-analytics { display: flex; gap: 20px; }
+        .panel-analytics { display: flex; gap: 12px; flex-shrink: 0; }
         
         .table-area { overflow-x: auto; max-height: 600px; overflow-y: auto; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
@@ -157,12 +170,39 @@
         .ranking-score { font-size: 12px; font-weight: 800; min-width: 36px; text-align: right; }
         .ranking-issues { font-size: 10px; color: var(--text-secondary); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        .correlation-card { padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; background: rgba(255,255,255,0.02); }
-        .correlation-card.degraded { border-color: rgba(251,113,133,0.35); background: rgba(251,113,133,0.06); }
-        .correlation-card.stressed { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.05); }
-        .correlation-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-        .correlation-flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-        .correlation-flag { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+        .correlation-card { padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; margin-bottom: 10px; background: rgba(255,255,255,0.02); }
+        .correlation-card.degraded { border-color: rgba(251,113,133,0.35); background: linear-gradient(135deg, rgba(251,113,133,0.08), rgba(251,113,133,0.02)); }
+        .correlation-card.stressed { border-color: rgba(245,158,11,0.3); background: linear-gradient(135deg, rgba(245,158,11,0.07), rgba(245,158,11,0.02)); }
+        .correlation-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .correlation-server-name { font-size: 14px; font-weight: 700; color: #fff; }
+        .correlation-phase-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .correlation-phase-block { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 8px 10px; }
+        .correlation-phase-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-2); margin-bottom: 5px; font-weight: 700; }
+        .correlation-flags { display: flex; gap: 4px; flex-wrap: wrap; }
+        .correlation-flag { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.08); }
+        .correlation-flag.infra { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.2); color: var(--info); }
+        .correlation-flag.zone { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); color: var(--warning); }
+        .correlation-flag.record { background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.2); color: var(--danger); }
+
+        .coverage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        .coverage-block { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; }
+        .coverage-block-title { font-size: 12px; font-weight: 700; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .coverage-sample { font-size: 10px; color: var(--text-secondary); font-weight: 400; }
+        .coverage-metric { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; }
+        .coverage-metric:last-child { border-bottom: none; }
+        .coverage-metric .k { color: var(--text-secondary); }
+        .coverage-metric .v { color: var(--text-primary); font-weight: 700; }
+        .coverage-metric .v.good { color: var(--success); }
+        .coverage-metric .v.warn { color: var(--warning); }
+        .coverage-metric .v.bad { color: var(--danger); }
+
+        .panel-stats-bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+        .panel-stat { display: flex; align-items: baseline; gap: 6px; padding: 4px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; }
+        .panel-stat .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); font-weight: 600; }
+        .panel-stat .value { font-size: 13px; font-weight: 800; color: #fff; }
+        .panel-stat .value.danger { color: var(--danger); }
+        .panel-stat .value.warning { color: var(--warning); }
+        .panel-stat .value.success { color: var(--success); }
 
         .problem-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 12px; }
         .problem-item:last-child { border-bottom: none; }
@@ -186,12 +226,16 @@
         @media (max-width: 1024px) {
             .hero, .action-board, .help-content, .phase-strip { grid-template-columns: 1fr; }
             .hero-stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+            .coverage-grid, .correlation-phase-groups { grid-template-columns: 1fr; }
+            .panel-header { flex-direction: column; align-items: flex-start; }
+            .panel-stats-bar { flex-wrap: wrap; }
         }
 
         @media (max-width: 720px) {
             header { position: static; flex-direction: column; }
             .hero-title { font-size: 26px; }
             .hero-stats, .incident-grid { grid-template-columns: 1fr; }
+            .help-tip .help-bubble { max-width:90vw; width:300px; }
         }
     </style>
 </head>
@@ -267,9 +311,11 @@
             <div class="help-card">
                 <h3>How to read the sections</h3>
                 <ul>
-                    <li><strong>Infrastructure</strong> <span>shows server reachability, DNS service health, encryption support, resolver exposure, and capability markers.</span></li>
-                    <li><strong>Zones</strong> <span>shows SOA visibility, synchronization, transfer exposure, DNSSEC, CAA, and whether the zone check was full or limited to SOA.</span></li>
-                    <li><strong>Records</strong> <span>shows consistency across repeated queries, contextual transport data, answer previews, and semantic findings such as dangling targets or policy issues.</span></li>
+                    <li><strong>Infrastructure</strong> <span>shows server reachability, DNS service health, encryption support, resolver exposure, and capability markers. Analytics bar shows alive/dead/exposed counts at a glance.</span></li>
+                    <li><strong>Zones</strong> <span>shows SOA visibility, synchronization, transfer exposure, DNSSEC, CAA, and check scope. Desync count is highlighted in the analytics bar.</span></li>
+                    <li><strong>Records</strong> <span>shows consistency across repeated queries, transport context, answer previews, and semantic findings. Rows with findings show a yellow badge in the Sync column.</span></li>
+                    <li><strong>Cross-Phase Correlations</strong> <span>groups flags by Infrastructure/Zones/Records per server, making multi-phase patterns immediately visible.</span></li>
+                    <li><strong>Coverage Reliability</strong> <span>shows per-phase metric coverage with color-coded values: green for 90%+, amber for 70-89%, red for below 70%.</span></li>
                 </ul>
             </div>
             <div class="help-card">
@@ -279,6 +325,16 @@
                     <li><strong>Zone Desync</strong> <span>deserves attention when repeated across the same domain and multiple servers.</span></li>
                     <li><strong>Divergence</strong> <span>may be expected with load balancing, but repeated divergence can also reveal instability or inconsistent policy.</span></li>
                     <li><strong>SOA_ONLY</strong> <span>means the zone audit was incomplete, so findings must be interpreted carefully.</span></li>
+                </ul>
+            </div>
+            <div class="help-card">
+                <h3>Manual verification</h3>
+                <p>Most report fields can be validated manually. Click the <span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;background:rgba(94,168,255,0.14);color:var(--accent-2);font-size:10px;font-weight:800;border:1px solid rgba(94,168,255,0.22)">?</span> icon on any column header or metric to see the explanation, then click <strong>"Verify Manually"</strong> to expand the command reference.</p>
+                <ul>
+                    <li><strong>OS tabs</strong> <span>switch between Linux and Windows commands for each verification step.</span></li>
+                    <li><strong>Click to copy</strong> <span>any command block by clicking on it. The command is copied to your clipboard.</span></li>
+                    <li><strong>Tools used</strong> <span>include dig, nslookup, ping, mtr, curl, openssl, kdig, nmap, and native PowerShell cmdlets.</span></li>
+                    <li><strong>Placeholders</strong> <span>like &lt;server_ip&gt; and &lt;domain&gt; must be replaced with values from your report.</span></li>
                 </ul>
             </div>
         </div>
@@ -299,21 +355,30 @@
     <div id="details-view" style="display:none">
         <div class="forensic-panel">
             <div class="panel-header" onclick="dataManager.toggleSection('p1')">
-                <div class="panel-title">01 INFRASTRUCTURE VULNERABILITIES</div>
+                <div>
+                    <div class="panel-title">01 INFRASTRUCTURE VULNERABILITIES</div>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-top:2px">Server reachability, DNS service health, encryption support, resolver exposure, capability markers</div>
+                </div>
                 <div class="panel-analytics" id="p1-analytics"></div>
             </div>
             <div class="table-area collapsed" id="p1-content"></div>
         </div>
         <div class="forensic-panel">
             <div class="panel-header" onclick="dataManager.toggleSection('p2')">
-                <div class="panel-title">02 ZONE INTEGRITY & COMPLIANCE</div>
+                <div>
+                    <div class="panel-title">02 ZONE INTEGRITY & COMPLIANCE</div>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-top:2px">SOA visibility, synchronization, transfer exposure, DNSSEC, CAA, check scope</div>
+                </div>
                 <div class="panel-analytics" id="p2-analytics"></div>
             </div>
             <div class="table-area collapsed" id="p2-content"></div>
         </div>
         <div class="forensic-panel">
             <div class="panel-header" onclick="dataManager.toggleSection('p3')">
-                <div class="panel-title">03 SEMANTIC RECORD CONSISTENCY</div>
+                <div>
+                    <div class="panel-title">03 SEMANTIC RECORD CONSISTENCY</div>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-top:2px">Query consistency, transport context, answer previews, semantic findings (dangling targets, policy issues)</div>
+                </div>
                 <div class="panel-analytics" id="p3-analytics"></div>
             </div>
             <div class="table-area collapsed" id="p3-content"></div>
@@ -427,6 +492,139 @@
     const uiRenderer = {
         filter: '',
 
+        cmdDb: {
+            'ping': {
+                desc: 'Test basic network reachability (ICMP echo)',
+                linux: 'ping -c 4 <server_ip>\nmtr --report <server_ip>',
+                win: 'ping -n 4 <server_ip>\ntracert <server_ip>'
+            },
+            'udp53': {
+                desc: 'Verify DNS service on UDP port 53',
+                linux: 'dig @<server_ip> example.com A +timeout=3\nnslookup example.com <server_ip>',
+                win: 'nslookup example.com <server_ip>\nResolve-DnsName example.com -Server <server_ip> -Type A'
+            },
+            'tcp53': {
+                desc: 'Verify DNS service on TCP port 53',
+                linux: 'dig @<server_ip> example.com A +tcp +timeout=3\nhost -T example.com <server_ip>',
+                win: 'nslookup -vc example.com <server_ip>\nResolve-DnsName example.com -Server <server_ip> -TcpOnly'
+            },
+            'dot': {
+                desc: 'Test DNS over TLS (TCP/853)',
+                linux: 'kdig +tls +tls-host=<hostname> @<server_ip> example.com\ndig +tls +tls-hostname=<hostname> @<server_ip> example.com',
+                win: 'Resolve-DnsName example.com -Server <server_ip> -DnsOverHttps\n# Use kdig (Knot DNS) or test manually:\nopenssl s_client -connect <server_ip>:853'
+            },
+            'doh': {
+                desc: 'Test DNS over HTTPS (TCP/443)',
+                linux: 'curl -H "Accept: application/dns-json" \\\n  "https://<server_ip>/dns-query?name=example.com&type=A"\ndig +https @<server_ip> example.com',
+                win: 'curl -H "Accept: application/dns-json" \\\n  "https://<server_ip>/dns-query?name=example.com&type=A"\nResolve-DnsName example.com -Server <server_ip> -DnsOverHttps'
+            },
+            'open_resolver': {
+                desc: 'Check if server allows recursive queries from external IPs',
+                linux: 'dig @<server_ip> example.com A +recurse +timeout=5\n# If ANSWER section has data, server may be open\ndig @<server_ip> version.bind CH TXT',
+                win: 'nslookup example.com <server_ip>\n# If resolution succeeds from external IP, it may be open\nnslookup -type=TXT version.bind <server_ip>'
+            },
+            'dnssec': {
+                desc: 'Verify DNSSEC validation and signatures',
+                linux: 'dig @<server_ip> <domain> A +dnssec +cd\n# Look for RRSIG records in answer\ndig @<server_ip> <domain> DNSKEY +dnssec',
+                win: 'Resolve-DnsName <domain> -Server <server_ip> -Type A -DnsSecOk\nResolve-DnsName <domain> -Server <server_ip> -Type DNSKEY'
+            },
+            'edns': {
+                desc: 'Check EDNS0 support (extensions for DNS)',
+                linux: 'dig @<server_ip> example.com A +bufsize=4096 +nsid\n# Look for EDNS flags in OPT pseudo-record',
+                win: 'Resolve-DnsName example.com -Server <server_ip>\n# EDNS support is tested implicitly by modern resolvers'
+            },
+            'recursion': {
+                desc: 'Test if server provides recursive resolution',
+                linux: 'dig @<server_ip> example.com A +recurse\n# ra flag in response = recursion available\ndig @<server_ip> . NS +recurse',
+                win: 'nslookup example.com <server_ip>\n# Check if server resolves domains it is not authoritative for'
+            },
+            'soa': {
+                desc: 'Query SOA record for a zone',
+                linux: 'dig @<server_ip> <domain> SOA +timeout=3\nnslookup -type=SOA <domain> <server_ip>\nhost -t SOA <domain> <server_ip>',
+                win: 'nslookup -type=SOA <domain> <server_ip>\nResolve-DnsName <domain> -Server <server_ip> -Type SOA'
+            },
+            'axfr': {
+                desc: 'Attempt zone transfer (should be restricted)',
+                linux: 'dig @<server_ip> <domain> AXFR\nhost -l <domain> <server_ip>\n# Successful transfer = security risk',
+                win: 'nslookup -type=AXFR <domain> <server_ip>\n# Successful transfer = security risk'
+            },
+            'ns_sync': {
+                desc: 'Compare NS records and SOA serials across servers',
+                linux: 'for srv in <ip1> <ip2> <ip3>; do\n  echo "--- $srv ---"\n  dig @$srv <domain> SOA +short\ndig NS <domain> +short',
+                win: 'nslookup -type=SOA <domain> <server1>\nnslookup -type=SOA <domain> <server2>\n# Compare serial numbers manually'
+            },
+            'caa': {
+                desc: 'Check CAA (Certification Authority Authorization) records',
+                linux: 'dig @<server_ip> <domain> CAA\nnslookup -type=CAA <domain> <server_ip>\nhost -t CAA <domain>',
+                win: 'Resolve-DnsName <domain> -Server <server_ip> -Type CAA\nnslookup -type=CAA <domain> <server_ip>'
+            },
+            'dnssec_zone': {
+                desc: 'Verify zone-level DNSSEC signing',
+                linux: 'dig @<server_ip> <domain> DNSKEY +dnssec\ndig @<server_ip> <domain> DS\n# Look for RRSIG on SOA',
+                win: 'Resolve-DnsName <domain> -Server <server_ip> -Type DNSKEY -DnsSecOk\nResolve-DnsName <domain> -Server <server_ip> -Type DS'
+            },
+            'resolver_class': {
+                desc: 'Classify server as authoritative, recursive, or mixed',
+                linux: '# Test recursion: dig @<server_ip> example.com A +recurse\n# Test authority:  dig @<server_ip> <domain> SOA\n# Compare RA/AA flags in responses',
+                win: '# Test recursion: nslookup example.com <server_ip>\n# Test authority:  nslookup -type=SOA <domain> <server_ip>\n# Check response flags'
+            },
+            'qname_min': {
+                desc: 'Check QNAME minimization (privacy)',
+                linux: 'kdig +qname-min @<server_ip> example.com\n# Or trace the delegation path:\ndig +trace +qname example.com',
+                win: '# QNAME minimization is not directly testable with nslookup\n# Use dig or kdig from WSL or BIND for Windows'
+            },
+            'cookies': {
+                desc: 'Check DNS cookie support (anti-spoofing)',
+                linux: 'dig @<server_ip> example.com A +cookie\n# Look for COOKIE in OPT record\ndig @<server_ip> example.com A +cookie=0102030405060708',
+                win: '# DNS cookies require dig or kdig\n# nslookup does not support cookie option\ndig @<server_ip> example.com A +cookie'
+            },
+            'domain': {
+                desc: 'Basic domain DNS resolution check',
+                linux: 'dig <domain> A +short\ndig <domain> AAAA +short\ndig <domain> ANY',
+                win: 'Resolve-DnsName <domain> -Type A\nnslookup <domain>'
+            },
+            'serial': {
+                desc: 'Check SOA serial number for zone versioning',
+                linux: 'dig @<server_ip> <domain> SOA +short | awk \'{print $3}\'\n# Compare across servers for consistency',
+                win: 'nslookup -type=SOA <domain> <server_ip>\n# Serial is the 3rd field in SOA response'
+            },
+            'zone_transfer': {
+                desc: 'Attempt and verify zone transfer restrictions',
+                linux: '# AXFR attempt (should fail):\ndig @<server_ip> <domain> AXFR\n# IXFR attempt:\ndig @<server_ip> <domain> IXFR=<serial>',
+                win: 'nslookup -type=AXFR <domain> <server_ip>\n# Successful transfer = immediate security finding'
+            },
+            'record_type': {
+                desc: 'Query specific record types',
+                linux: 'dig <domain> <type> +short\n# Examples: dig example.com MX +short\ndig example.com TXT +short\ndig example.com CNAME +short',
+                win: 'Resolve-DnsName <domain> -Type <type>\n# Examples: Resolve-DnsName example.com -Type MX\nnslookup -type=<type> <domain>'
+            },
+            'consistency': {
+                desc: 'Verify answer consistency across repeated queries',
+                linux: 'for i in $(seq 1 5); do\n  dig @<server_ip> <domain> A +short\n  sleep 1\ndone | sort | uniq -c',
+                win: 'for /L %i in (1,1,5) do @(\n  nslookup <domain> <server_ip>\n  timeout /t 1 >nul\n)'
+            },
+            'wildcard': {
+                desc: 'Detect wildcard DNS resolution',
+                linux: 'dig @<server_ip> random-test-string.<domain> A +short\n# If it resolves, wildcard is present\ndig @<server_ip> doesnotexist.<domain> A +short',
+                win: 'nslookup random-test-string.<domain> <server_ip>\n# If resolution succeeds, wildcard detected\nResolve-DnsName doesnotexist.<domain>'
+            },
+            'web_risk': {
+                desc: 'Check web service exposure on DNS server host',
+                linux: 'curl -sI http://<server_ip> | head -5\ncurl -skI https://<server_ip> | head -5\nnmap -p 80,443 <server_ip>',
+                win: 'curl -sI http://<server_ip>\ncurl -skI https://<server_ip>\nTest-NetConnection <server_ip> -Port 80'
+            },
+            'score': {
+                desc: 'Manual scoring components verification',
+                linux: '# Security: check DNSSEC, cookies, EDNS, CAA, AXFR\n# Privacy: check DoT, DoH, ECS, QNAME-min\ndig @<server_ip> <domain> A +dnssec +cookie +nsid',
+                win: '# Security: check DNSSEC, CAA, zone transfer\n# Privacy: check DoT/DoH support\nResolve-DnsName <domain> -Server <server_ip> -DnsSecOk'
+            },
+            'coverage': {
+                desc: 'Verify report coverage completeness',
+                linux: '# Count servers tested:\nwc -l servers.txt\n# Verify each responds:\nfor ip in $(cat servers.txt); do\n  dig @$ip example.com A +short +timeout=2\ndone',
+                win: '# Verify each server responds:\nforeach ($ip in Get-Content servers.txt) {\n  Resolve-DnsName example.com -Server $ip\n}'
+            }
+        },
+
         escapeAttr(value) {
             return String(value)
                 .replace(/&/g, '&amp;')
@@ -435,10 +633,49 @@
                 .replace(/>/g, '&gt;');
         },
 
-        help(label, title, body) {
+        help(label, title, body, cmdKey) {
             const tooltip = `${title}: ${body}`;
             const escaped = this.escapeAttr(tooltip);
-            return `${label}<span class="help-tip" title="${escaped}" aria-label="${escaped}"><button type="button" class="help-chip" aria-label="${escaped}" onclick="dataManager.toggleHelp(event)">?</button><span class="help-bubble"><strong>${title}</strong>${body}</span></span>`;
+            let cmdHtml = '';
+            if (cmdKey && this.cmdDb[cmdKey]) {
+                const cmd = this.cmdDb[cmdKey];
+                const cmdId = 'cmd-' + cmdKey + '-' + Math.random().toString(36).slice(2, 7);
+                const linuxEscaped = this.escapeAttr(cmd.linux);
+                const winEscaped = this.escapeAttr(cmd.win);
+                cmdHtml = `<span class="cmd-toggle" onclick="event.stopPropagation(); uiRenderer.toggleCmd('${cmdId}')">&#9654; Verify Manually</span>` +
+                    `<div class="cmd-block collapsed" id="${cmdId}">` +
+                    `<div class="cmd-desc">${cmd.desc}</div>` +
+                    `<div class="cmd-os-tabs">` +
+                    `<div class="cmd-os-tab active" onclick="event.stopPropagation(); uiRenderer.switchCmdTab('${cmdId}','linux')">Linux</div>` +
+                    `<div class="cmd-os-tab" onclick="event.stopPropagation(); uiRenderer.switchCmdTab('${cmdId}','win')">Windows</div>` +
+                    `</div>` +
+                    `<div class="cmd-code" onclick="event.stopPropagation(); navigator.clipboard.writeText(this.querySelector('.cmd-text').textContent).then(()=>{this.querySelector('.copy-hint').textContent='Copied!';setTimeout(()=>this.querySelector('.copy-hint').textContent='copy',1200)})">` +
+                    `<span class="copy-hint">copy</span>` +
+                    `<div class="cmd-text cmd-linux">${linuxEscaped}</div>` +
+                    `<div class="cmd-text cmd-win" style="display:none">${winEscaped}</div>` +
+                    `</div></div>`;
+            }
+            return `${label}<span class="help-tip" title="${escaped}" aria-label="${escaped}"><button type="button" class="help-chip" aria-label="${escaped}" onclick="dataManager.toggleHelp(event)">?</button><span class="help-bubble"><strong>${title}</strong>${body}${cmdHtml}</span></span>`;
+        },
+
+        toggleCmd(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.toggle('collapsed');
+            const toggle = el.previousElementSibling;
+            if (toggle && toggle.classList.contains('cmd-toggle')) {
+                toggle.innerHTML = el.classList.contains('collapsed') ? '&#9654; Verify Manually' : '&#9660; Verify Manually';
+            }
+        },
+
+        switchCmdTab(id, os) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.querySelectorAll('.cmd-os-tab').forEach(tab => tab.classList.remove('active'));
+            el.querySelectorAll('.cmd-text').forEach(txt => txt.style.display = 'none');
+            const tabIndex = os === 'linux' ? 0 : 1;
+            el.querySelectorAll('.cmd-os-tab')[tabIndex].classList.add('active');
+            el.querySelector('.cmd-' + os).style.display = 'block';
         },
 
         matchesFilter(item) {
@@ -618,9 +855,9 @@
 
             const stats = [
                 { value: grade, label: this.help('Global Grade', 'Global Grade', 'Top-level grade derived from the available scores for this report. This card remains global even when a text filter is active.') },
-                { value: `${openResolvers}`, label: this.help('Open Resolvers', 'Open Resolvers', 'Count of servers classified as PUBLIC, meaning recursive exposure is visible.') },
-                { value: `${desync}`, label: this.help('Zone Desync', 'Zone Desync', 'Count of zone results where synchronization signals do not match across the tested servers.') },
-                { value: `${divergences}`, label: this.help('Divergent Answers', 'Divergent Answers', 'Count of repeated record checks that returned materially different answers.') }
+                { value: `${openResolvers}`, label: this.help('Open Resolvers', 'Open Resolvers', 'Count of servers classified as PUBLIC, meaning recursive exposure is visible.', 'open_resolver') },
+                { value: `${desync}`, label: this.help('Zone Desync', 'Zone Desync', 'Count of zone results where synchronization signals do not match across the tested servers.', 'ns_sync') },
+                { value: `${divergences}`, label: this.help('Divergent Answers', 'Divergent Answers', 'Count of repeated record checks that returned materially different answers.', 'consistency') }
             ];
             document.getElementById('hero-stats').innerHTML = stats.map(stat => `
                 <div class="hero-stat">
@@ -632,19 +869,19 @@
             const heroRisks = [
                 {
                     cls: openResolvers > 0 ? 'critical' : 'good',
-                    label: this.help('Resolver Exposure', 'Resolver Exposure', 'Highlights whether recursive service appears exposed to the public internet.'),
+                    label: this.help('Resolver Exposure', 'Resolver Exposure', 'Highlights whether recursive service appears exposed to the public internet.', 'open_resolver'),
                     value: openResolvers,
                     sub: openResolvers > 0 ? 'Public recursion observed. Review ACLs and exposure.' : 'No public recursion flagged.'
                 },
                 {
                     cls: desync > 0 ? 'attention' : 'good',
-                    label: this.help('Zone Consistency', 'Zone Consistency', 'Summarizes whether the tested servers appear synchronized for the same zone.'),
+                    label: this.help('Zone Consistency', 'Zone Consistency', 'Summarizes whether the tested servers appear synchronized for the same zone.', 'ns_sync'),
                     value: desync,
                     sub: desync > 0 ? 'Serial or NS mismatch needs investigation.' : 'No desynchronization detected.'
                 },
                 {
                     cls: divergences > 0 ? 'attention' : 'good',
-                    label: this.help('Record Stability', 'Record Stability', 'Summarizes whether repeated record lookups stayed stable within the same run.'),
+                    label: this.help('Record Stability', 'Record Stability', 'Summarizes whether repeated record lookups stayed stable within the same run.', 'consistency'),
                     value: divergences,
                     sub: divergences > 0 ? 'Divergent answers may indicate flapping, load-balancing, or cache issues.' : 'Sequential answers stayed stable.'
                 }
@@ -668,12 +905,12 @@
             
             const metrics = [
                 {
-                    l: this.help('Security Score', 'Security Score', 'Reflects security-oriented controls such as DNSSEC data serving, cookies, EDNS, resolver restriction, web exposure, AXFR, and CAA context.'),
+                    l: this.help('Security Score', 'Security Score', 'Reflects security-oriented controls such as DNSSEC data serving, cookies, EDNS, resolver restriction, web exposure, AXFR, and CAA context.', 'score'),
                     v: s.security_score_available ? s.security_score + '%' : 'N/A',
                     c: s.security_score_available ? this.getClr(s.security_score) : 'var(--warning)'
                 },
                 {
-                    l: this.help('Privacy Score', 'Privacy Score', 'Reflects privacy-oriented controls such as DoT, DoH, heuristic QNAME minimization, and ECS behavior.'),
+                    l: this.help('Privacy Score', 'Privacy Score', 'Reflects privacy-oriented controls such as DoT, DoH, heuristic QNAME minimization, and ECS behavior.', 'dot'),
                     v: s.privacy_score_available ? s.privacy_score + '%' : 'N/A',
                     c: s.privacy_score_available ? this.getClr(s.privacy_score) : 'var(--warning)'
                 },
@@ -683,12 +920,12 @@
                     c: s.global_grade.includes('A') ? 'var(--success)' : (s.global_grade === 'N/A' ? 'var(--warning)' : 'var(--danger)')
                 },
                 {
-                    l: this.help('Queries OK', 'Successful Queries', 'Percentage of record queries that returned a successful answer in the current execution.'),
+                    l: this.help('Queries OK', 'Successful Queries', 'Percentage of record queries that returned a successful answer in the current execution.', 'domain'),
                     v: successRate,
                     sub: `${s.success_queries}/${totalQueries}`
                 },
                 {
-                    l: this.help('Divergences', 'Divergences', 'Number of repeated record checks that returned materially different answers across the same execution.'),
+                    l: this.help('Divergences', 'Divergences', 'Number of repeated record checks that returned materially different answers across the same execution.', 'consistency'),
                     v: s.divergences,
                     c: s.divergences > 0 ? 'var(--danger)' : 'var(--success)'
                 },
@@ -716,25 +953,25 @@
             const radarCards = [
                 {
                     kind: 'danger',
-                    label: this.help('Open Resolver', 'Open Resolver', 'A server appears as an open resolver when it answers a third-party recursive request from the public internet.'),
+                    label: this.help('Open Resolver', 'Open Resolver', 'A server appears as an open resolver when it answers a third-party recursive request from the public internet.', 'open_resolver'),
                     desc: 'Recursive exposure visible to the public internet.',
                     value: infra.filter(i => i.resolver_exposed === true).length
                 },
                 {
                     kind: 'warning',
-                    label: this.help('Zone Desync', 'Zone Desync', 'Zones where serial, authority, or NS-related synchronization signals differ across servers.'),
+                    label: this.help('Zone Desync', 'Zone Desync', 'Zones where serial, authority, or NS-related synchronization signals differ across servers.', 'ns_sync'),
                     desc: 'Zones returning inconsistent serial or authority data.',
                     value: filtered.zones.filter(z => !z.zone_is_synced).length
                 },
                 {
                     kind: 'warning',
-                    label: this.help('Lame Delegation', 'Lame Delegation', 'Authoritative infrastructure that does not return the expected AA flag or behaves inconsistently as authority.'),
+                    label: this.help('Lame Delegation', 'Lame Delegation', 'Authoritative infrastructure that does not return the expected AA flag or behaves inconsistently as authority.', 'soa'),
                     desc: 'Authoritative responses without AA where it should exist.',
                     value: filtered.zones.filter(z => !z.aa && z.status === 'NOERROR').length
                 },
                 {
                     kind: 'warning',
-                    label: this.help('Divergence', 'Divergence', 'Repeated queries returned different answers during the same execution.'),
+                    label: this.help('Divergence', 'Divergence', 'Repeated queries returned different answers during the same execution.', 'consistency'),
                     desc: 'Sequential queries returned materially different answers.',
                     value: filtered.records.filter(r => r.internally_consistent === 'DIV!').length
                 }
@@ -900,26 +1137,34 @@
                 const crossHtml = cross.slice(0, 8).map(c => {
                     const cls = c.pattern === 'degraded' ? 'degraded' : 'stressed';
                     const pLabel = c.pattern === 'degraded' ? 'DEGRADED' : 'STRESSED';
-                    const pClr = c.pattern === 'degraded' ? 'var(--danger)' : 'var(--warning)';
-                    const flags = [
-                        ...c.infra.map(f => `infra:${f}`),
-                        ...c.zones.map(f => `zone:${f}`),
-                        ...c.records.map(f => `rec:${f}`)
-                    ];
+                    const infraFlags = (c.infra || []).map(f => `<span class="correlation-flag infra">${this.escapeAttr(f)}</span>`).join('');
+                    const zoneFlags = (c.zones || []).map(f => `<span class="correlation-flag zone">${this.escapeAttr(f)}</span>`).join('');
+                    const recordFlags = (c.records || []).map(f => `<span class="correlation-flag record">${this.escapeAttr(f)}</span>`).join('');
                     return `<div class="correlation-card ${cls}">
                         <div class="correlation-header">
-                            <span style="font-weight:700">${this.escapeAttr(c.server)}</span>
+                            <span class="correlation-server-name">${this.escapeAttr(c.server)}</span>
                             <span class="badge ${cls === 'degraded' ? 'badge-danger' : 'badge-warning'}">${pLabel}</span>
                         </div>
-                        <div class="correlation-flags">
-                            ${flags.map(f => `<span class="correlation-flag">${this.escapeAttr(f)}</span>`).join('')}
+                        <div class="correlation-phase-groups">
+                            <div class="correlation-phase-block">
+                                <div class="correlation-phase-label">Infrastructure</div>
+                                <div class="correlation-flags">${infraFlags || '<span style="font-size:10px;color:var(--text-secondary)">No flags</span>'}</div>
+                            </div>
+                            <div class="correlation-phase-block">
+                                <div class="correlation-phase-label">Zones</div>
+                                <div class="correlation-flags">${zoneFlags || '<span style="font-size:10px;color:var(--text-secondary)">No flags</span>'}</div>
+                            </div>
+                            <div class="correlation-phase-block">
+                                <div class="correlation-phase-label">Records</div>
+                                <div class="correlation-flags">${recordFlags || '<span style="font-size:10px;color:var(--text-secondary)">No flags</span>'}</div>
+                            </div>
                         </div>
                     </div>`;
                 }).join('');
 
                 html += `<div class="phase-card">
                     <h3>Cross-Phase Correlations</h3>
-                    <div style="font-size:10px; color:var(--text-secondary); margin-bottom:8px">Servers with flags in 2+ phases</div>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-bottom:10px">Servers with flags across 2+ phases &mdash; grouped by phase for pattern visibility</div>
                     ${crossHtml}
                 </div>`;
             }
@@ -945,28 +1190,38 @@
 
             // Coverage reliability
             if (cov.phase1 || cov.phase2 || cov.phase3) {
-                let covHtml = '';
-                if (cov.phase1) {
-                    covHtml += `<div class="detail-section">
-                        <div class="detail-section-title">Phase 1 Coverage (n=${cov.phase1_sample_size || '?'})</div>
-                        ${Object.entries(cov.phase1).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
+                const fmtCovValue = (k, v) => {
+                    const str = String(v);
+                    if (str === '100.0%' || str === '100%') return 'good';
+                    if (str.includes('%')) {
+                        const num = parseFloat(str);
+                        if (num >= 90) return 'good';
+                        if (num >= 70) return 'warn';
+                        return 'bad';
+                    }
+                    if (str === '0' || str === '0.0%') return 'bad';
+                    return '';
+                };
+                const renderPhaseBlock = (title, data, sampleLabel) => {
+                    const rows = Object.entries(data).map(([k, v]) => {
+                        const cls = fmtCovValue(k, v);
+                        return `<div class="coverage-metric"><span class="k">${this.escapeAttr(k)}</span><span class="v ${cls}">${this.escapeAttr(v)}</span></div>`;
+                    }).join('');
+                    return `<div class="coverage-block">
+                        <div class="coverage-block-title">${title} ${sampleLabel ? `<span class="coverage-sample">${sampleLabel}</span>` : ''}</div>
+                        ${rows}
                     </div>`;
-                }
-                if (cov.phase2) {
-                    covHtml += `<div class="detail-section">
-                        <div class="detail-section-title">Phase 2 Coverage</div>
-                        ${Object.entries(cov.phase2).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
-                    </div>`;
-                }
-                if (cov.phase3) {
-                    covHtml += `<div class="detail-section">
-                        <div class="detail-section-title">Phase 3 Coverage</div>
-                        ${Object.entries(cov.phase3).map(([k, v]) => `<div class="detail-kv"><span class="k">${this.escapeAttr(k)}</span><span class="v">${this.escapeAttr(v)}</span></div>`).join('')}
-                    </div>`;
-                }
+                };
+                let covHtml = '<div class="coverage-grid">';
+                if (cov.phase1) covHtml += renderPhaseBlock('Phase 1 — Infrastructure', cov.phase1, `n=${cov.phase1_sample_size || '?'}`);
+                if (cov.phase2) covHtml += renderPhaseBlock('Phase 2 — Zones', cov.phase2, '');
+                if (cov.phase3) covHtml += renderPhaseBlock('Phase 3 — Records', cov.phase3, '');
+                covHtml += '</div>';
+
                 html += `<div class="phase-card" style="grid-column: 1 / -1">
                     <h3>Coverage Reliability</h3>
-                    <div class="detail-grid">${covHtml}</div>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-bottom:12px">Per-phase metric coverage percentages &mdash; values color-coded by threshold</div>
+                    ${covHtml}
                 </div>`;
             }
 
@@ -986,26 +1241,32 @@
             
             const insights = dataManager.current.analytics.phase1_infrastructure || {};
             const p1CompactKeys = ['Network Health', 'Transport Consistency', 'Control Plane Health', 'Observability Quality'];
-            document.getElementById('p1-analytics').innerHTML = [
-                `<div style="font-size:10px">Servers: <b>${filtered.length}</b></div>`,
-                `<div style="font-size:10px">Alive: <b>${filtered.filter(d => !d.is_dead).length}</b></div>`,
-                `<div style="font-size:10px">Dead: <b>${filtered.filter(d => d.is_dead).length}</b></div>`,
-                ...p1CompactKeys.filter(key => key in insights).map(key => `<div style="font-size:10px">${key}: <b>${insights[key]}</b></div>`)
-            ].join('');
+            const deadCount = filtered.filter(d => d.is_dead).length;
+            const exposedCount = filtered.filter(d => d.resolver_exposed === true).length;
+            const p1Stats = [
+                { label: 'Servers', value: filtered.length },
+                { label: 'Alive', value: filtered.filter(d => !d.is_dead).length, cls: 'success' },
+                { label: 'Dead', value: deadCount, cls: deadCount > 0 ? 'danger' : 'success' },
+                { label: 'Exposed', value: exposedCount, cls: exposedCount > 0 ? 'danger' : 'success' },
+                ...p1CompactKeys.filter(key => key in insights).map(key => ({ label: key, value: insights[key] }))
+            ];
+            document.getElementById('p1-analytics').innerHTML = '<div class="panel-stats-bar">' +
+                p1Stats.map(s => `<div class="panel-stat"><span class="label">${s.label}</span><span class="value ${s.cls || ''}">${s.value}</span></div>`).join('') +
+                '</div>';
 
             let html = `<table><thead><tr>
                 <th>${this.help('Group', 'Server Group', 'Logical group assigned through groups.csv.')}</th>
-                <th>${this.help('IP Address', 'Server Address', 'Target resolver or authoritative server IP.')}</th>
-                <th>${this.help('Profile', 'Server Profile', 'Indicates whether the server behaves as recursive, authoritative, mixed, or unknown.')}</th>
-                <th>${this.help('Ping', 'Reachability', 'Basic ICMP round-trip time used as a coarse network health signal.')}</th>
-                <th>${this.help('U53', 'UDP DNS Service', 'Whether UDP/53 responded like a DNS service.')}</th>
-                <th>${this.help('T53', 'TCP DNS Service', 'Whether TCP/53 responded like a DNS service.')}</th>
-                <th>${this.help('DoT', 'DNS over TLS', 'Encrypted DNS support over TCP/853.')}</th>
-                <th>${this.help('DoH', 'DNS over HTTPS', 'Encrypted DNS support over HTTPS.')}</th>
-                <th>${this.help('Score', 'Infrastructure Score', 'Profile-aware summary of security and privacy posture.')}</th>
-                <th>${this.help('Resolver', 'Resolver Classification', 'PUBLIC=open recursion, RESTRICTED=controlled, UNKNOWN=inconclusive.')}</th>
-                <th>${this.help('Caps', 'Capabilities', 'S=DNSSEC E=EDNS K=Cookies Q=QNAME X=ECS.')}</th>
-                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports on the same host as context.')}</th>
+                <th>${this.help('IP Address', 'Server Address', 'Target resolver or authoritative server IP.', 'ping')}</th>
+                <th>${this.help('Profile', 'Server Profile', 'Indicates whether the server behaves as recursive, authoritative, mixed, or unknown.', 'resolver_class')}</th>
+                <th>${this.help('Ping', 'Reachability', 'Basic ICMP round-trip time used as a coarse network health signal.', 'ping')}</th>
+                <th>${this.help('U53', 'UDP DNS Service', 'Whether UDP/53 responded like a DNS service.', 'udp53')}</th>
+                <th>${this.help('T53', 'TCP DNS Service', 'Whether TCP/53 responded like a DNS service.', 'tcp53')}</th>
+                <th>${this.help('DoT', 'DNS over TLS', 'Encrypted DNS support over TCP/853.', 'dot')}</th>
+                <th>${this.help('DoH', 'DNS over HTTPS', 'Encrypted DNS support over HTTPS.', 'doh')}</th>
+                <th>${this.help('Score', 'Infrastructure Score', 'Profile-aware summary of security and privacy posture.', 'score')}</th>
+                <th>${this.help('Resolver', 'Resolver Classification', 'PUBLIC=open recursion, RESTRICTED=controlled, UNKNOWN=inconclusive.', 'resolver_class')}</th>
+                <th>${this.help('Caps', 'Capabilities', 'S=DNSSEC E=EDNS K=Cookies Q=QNAME X=ECS.', 'dnssec')}</th>
+                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports on the same host as context.', 'web_risk')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
                 const caps = [
@@ -1109,29 +1370,35 @@
             
             const insights = dataManager.current.analytics.phase2_zones || {};
             const p2CompactKeys = ['Zone Response Health', 'Authority Integrity', 'Transfer Exposure Posture', 'Zone Hygiene'];
-            document.getElementById('p2-analytics').innerHTML = [
-                `<div style="font-size:10px">Domains: <b>${new Set(filtered.map(d => d.domain)).size}</b></div>`,
-                `<div style="font-size:10px">Checks: <b>${filtered.length}</b></div>`,
-                `<div style="font-size:10px">Full: <b>${filtered.filter(d => d.check_scope === 'FULL').length}</b></div>`,
-                `<div style="font-size:10px">SOA Only: <b>${filtered.filter(d => d.check_scope === 'SOA_ONLY').length}</b></div>`,
-                ...p2CompactKeys.filter(key => key in insights).map(key => `<div style="font-size:10px">${key}: <b>${insights[key]}</b></div>`)
-            ].join('');
+            const desyncCount = filtered.filter(d => !d.zone_is_synced).length;
+            const soaOnlyCount = filtered.filter(d => d.check_scope === 'SOA_ONLY').length;
+            const p2Stats = [
+                { label: 'Domains', value: new Set(filtered.map(d => d.domain)).size },
+                { label: 'Checks', value: filtered.length },
+                { label: 'Full', value: filtered.filter(d => d.check_scope === 'FULL').length, cls: 'success' },
+                { label: 'SOA Only', value: soaOnlyCount, cls: soaOnlyCount > 0 ? 'warning' : 'success' },
+                { label: 'Desync', value: desyncCount, cls: desyncCount > 0 ? 'danger' : 'success' },
+                ...p2CompactKeys.filter(key => key in insights).map(key => ({ label: key, value: insights[key] }))
+            ];
+            document.getElementById('p2-analytics').innerHTML = '<div class="panel-stats-bar">' +
+                p2Stats.map(s => `<div class="panel-stat"><span class="label">${s.label}</span><span class="value ${s.cls || ''}">${s.value}</span></div>`).join('') +
+                '</div>';
 
             let html = `<table><thead><tr>
-                <th>${this.help('Domain', 'Zone Name', 'Zone or domain being checked.')}</th>
+                <th>${this.help('Domain', 'Zone Name', 'Zone or domain being checked.', 'domain')}</th>
                 <th>${this.help('Group', 'Server Group', 'Logical server group.')}</th>
-                <th>${this.help('Server', 'Server', 'DNS server that answered.')}</th>
-                <th>${this.help('Status', 'SOA Status', 'SOA query outcome.')}</th>
-                <th>${this.help('Serial', 'SOA Serial', 'Zone version identifier.')}</th>
-                <th>${this.help('Lat', 'Latency', 'SOA query latency.')}</th>
-                <th>${this.help('Score', 'Zone Score', 'Sync + authority + AXFR + DNSSEC + CAA.')}</th>
-                <th>${this.help('AA', 'Authoritative', 'Authoritative answer flag.')}</th>
-                <th>${this.help('AXFR', 'Zone Transfer', 'Transfer exposure status.')}</th>
+                <th>${this.help('Server', 'Server', 'DNS server that answered.', 'ping')}</th>
+                <th>${this.help('Status', 'SOA Status', 'SOA query outcome.', 'soa')}</th>
+                <th>${this.help('Serial', 'SOA Serial', 'Zone version identifier.', 'serial')}</th>
+                <th>${this.help('Lat', 'Latency', 'SOA query latency.', 'soa')}</th>
+                <th>${this.help('Score', 'Zone Score', 'Sync + authority + AXFR + DNSSEC + CAA.', 'dnssec_zone')}</th>
+                <th>${this.help('AA', 'Authoritative', 'Authoritative answer flag.', 'soa')}</th>
+                <th>${this.help('AXFR', 'Zone Transfer', 'Transfer exposure status.', 'axfr')}</th>
                 <th>${this.help('Scope', 'Check Scope', 'FULL or SOA_ONLY.')}</th>
-                <th>${this.help('DNSSEC', 'Signing', 'Zone signing status.')}</th>
-                <th>${this.help('CAA', 'CAA', 'CAA record count.')}</th>
-                <th>${this.help('NS Sync', 'NS Consistency', 'NS answers matched across servers.')}</th>
-                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports as context.')}</th>
+                <th>${this.help('DNSSEC', 'Signing', 'Zone signing status.', 'dnssec_zone')}</th>
+                <th>${this.help('CAA', 'CAA', 'CAA record count.', 'caa')}</th>
+                <th>${this.help('NS Sync', 'NS Consistency', 'NS answers matched across servers.', 'ns_sync')}</th>
+                <th>${this.help('Web Risk', 'Web Exposure', 'Open web ports as context.', 'web_risk')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
                 html += `<tr class="${!d.zone_is_synced ? 'anomaly-row' : ''}">
@@ -1209,34 +1476,42 @@
             const filtered = data.filter(d => this.matchesFilter(d));
             
             const insights = dataManager.current.analytics.phase3_records || {};
-            document.getElementById('p3-analytics').innerHTML = [
-                `<div style="font-size:10px">Queries: <b>${filtered.length}</b></div>`,
-                `<div style="font-size:10px">OK: <b>${filtered.filter(d => d.status === 'NOERROR').length}</b></div>`,
-                `<div style="font-size:10px">DIV: <b>${filtered.filter(d => d.internally_consistent === 'DIV!').length}</b></div>`,
-                `<div style="font-size:10px">Findings: <b>${filtered.filter(d => (d.findings || []).length > 0).length}</b></div>`,
-                ...Object.entries(insights).slice(0, 1).map(([k,v]) => `<div style="font-size:10px">${k}: <b>${v}</b></div>`)
-            ].join('');
+            const divCount = filtered.filter(d => d.internally_consistent === 'DIV!').length;
+            const findingsCount = filtered.filter(d => (d.findings || []).length > 0).length;
+            const p3Stats = [
+                { label: 'Queries', value: filtered.length },
+                { label: 'OK', value: filtered.filter(d => d.status === 'NOERROR').length, cls: 'success' },
+                { label: 'Divergent', value: divCount, cls: divCount > 0 ? 'danger' : 'success' },
+                { label: 'Findings', value: findingsCount, cls: findingsCount > 0 ? 'warning' : 'success' },
+                ...Object.entries(insights).slice(0, 2).map(([k, v]) => ({ label: k, value: v }))
+            ];
+            document.getElementById('p3-analytics').innerHTML = '<div class="panel-stats-bar">' +
+                p3Stats.map(s => `<div class="panel-stat"><span class="label">${s.label}</span><span class="value ${s.cls || ''}">${s.value}</span></div>`).join('') +
+                '</div>';
 
             let html = `<table><thead><tr>
-                <th>${this.help('Domain', 'Query Target', 'Record owner or domain queried.')}</th>
+                <th>${this.help('Domain', 'Query Target', 'Record owner or domain queried.', 'domain')}</th>
                 <th>${this.help('Group', 'Server Group', 'Logical server group.')}</th>
-                <th>${this.help('Server', 'Server', 'DNS server that answered.')}</th>
-                <th>${this.help('Type', 'Record Type', 'A, AAAA, MX, TXT, SOA, CNAME, NS, etc.')}</th>
-                <th>${this.help('Status', 'DNS Status', 'Response code: NOERROR, NXDOMAIN, FAIL.')}</th>
-                <th>${this.help('Lat', 'Latency', 'Response time for representative query.')}</th>
-                <th>${this.help('Sync', 'Consistency', 'OK=matched, DIV!=diverged.')}</th>
-                <th>${this.help('Ping', 'Reach', 'Phase 1 ping status.')}</th>
-                <th>${this.help('Rec', 'Recursion', 'Phase 1 recursion status.')}</th>
-                <th>${this.help('DoT', 'DoT', 'Phase 1 DoT capability.')}</th>
-                <th>${this.help('DoH', 'DoH', 'Phase 1 DoH capability.')}</th>
-                <th>${this.help('NSID', 'NSID', 'Name Server ID (EDNS).')}</th>
-                <th>${this.help('WC', 'Wildcard', 'Wildcard resolution detected.')}</th>
+                <th>${this.help('Server', 'Server', 'DNS server that answered.', 'ping')}</th>
+                <th>${this.help('Type', 'Record Type', 'A, AAAA, MX, TXT, SOA, CNAME, NS, etc.', 'record_type')}</th>
+                <th>${this.help('Status', 'DNS Status', 'Response code: NOERROR, NXDOMAIN, FAIL.', 'domain')}</th>
+                <th>${this.help('Lat', 'Latency', 'Response time for representative query.', 'ping')}</th>
+                <th>${this.help('Sync', 'Consistency', 'OK=matched, DIV!=diverged.', 'consistency')}</th>
+                <th>${this.help('Ping', 'Reach', 'Phase 1 ping status.', 'ping')}</th>
+                <th>${this.help('Rec', 'Recursion', 'Phase 1 recursion status.', 'recursion')}</th>
+                <th>${this.help('DoT', 'DoT', 'Phase 1 DoT capability.', 'dot')}</th>
+                <th>${this.help('DoH', 'DoH', 'Phase 1 DoH capability.', 'doh')}</th>
+                <th>${this.help('NSID', 'NSID', 'Name Server ID (EDNS).', 'edns')}</th>
+                <th>${this.help('WC', 'Wildcard', 'Wildcard resolution detected.', 'wildcard')}</th>
             </tr></thead><tbody>`;
             filtered.forEach(d => {
-                html += `<tr class="${d.internally_consistent==='DIV!'?'anomaly-row':''}">
+                const hasFindings = (d.findings || []).length > 0;
+                const isAnomaly = d.internally_consistent==='DIV!' || hasFindings;
+                const findingsBadge = hasFindings ? ` <span class="badge badge-warning" style="margin-left:4px">${d.findings.length}!</span>` : '';
+                html += `<tr class="${isAnomaly?'anomaly-row':''}">
                     <td>${this.highlight(d.domain)}</td><td>${this.highlight(d.group || '-')}</td><td>${this.highlight(d.server)}</td><td>${d.type}</td>
                     <td><span class="badge ${d.status==='NOERROR'?'badge-success':'badge-danger'}">${d.status}</span></td>
-                    <td>${this.fmtLatency(d.latency, 1)}</td><td>${d.internally_consistent}</td>
+                    <td>${this.fmtLatency(d.latency, 1)}</td><td>${d.internally_consistent}${findingsBadge}</td>
                     <td>${d.ping || '-'}</td><td>${d.recursion || '-'}</td><td>${d.dot || '-'}</td><td>${d.doh || '-'}</td><td>${d.nsid || '-'}</td><td>${d.wildcard_detected ? 'YES' : 'NO'}</td>
                 </tr>`;
                 // Detail row with structured sub-sections
