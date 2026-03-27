@@ -676,6 +676,8 @@ def start_phase_watchdog(label, counters, total, active_items, lock, settings=No
 def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=False):
     """Phase 1: Deep Infrastructure Check (Once per server)."""
     ui.print_phase("1: Server Infrastructure", "Testing reachability, DNS service responsiveness, encryption, and exposure.")
+    if show_legends:
+        ui.print_legend_phase1_table()
     phase_start_time = time.time()
     infra_results = {}
     active_items = {}
@@ -1136,6 +1138,8 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                          {"Total Servers": len(infra_results), "Status Alive": alive, "Status Dead": dead}, 
                          phase_duration, 
                          insights)
+    if show_legends:
+        ui.print_legend_phase1_analytics()
     
     if settings.enable_execution_log and insights:
                 logging.info(f"[PHASE 1] ANALYTICS: {insights}")
@@ -1145,6 +1149,8 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=False):
     """Phase 2: Zone Integrity & SOA Synchronization."""
     ui.print_phase("2: Zone Integrity", "Checking SOA visibility, authority, synchronization, transfer exposure, and policy signals.")
+    if show_legends:
+        ui.print_legend_phase2_table()
     phase_start_time = time.time()
     zone_results = []
     active_items = {}
@@ -1638,6 +1644,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
         "Lame Delegations": lame,
         "NS Inconsistencies": inconsistent_ns // 2 if inconsistent_ns > 0 else 0
     }, phase_duration, insights)
+    if show_legends:
+        ui.print_legend_phase2_analytics()
 
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 2] ANALYTICS: {insights}")
@@ -1647,6 +1655,8 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
 def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock, show_legends=False):
     """Phase 3: Parallel Record Consistency Check."""
     ui.print_phase("3: Record Consistency", "Repeating record lookups to detect divergence, dangling targets, and policy anomalies.")
+    if show_legends:
+        ui.print_legend_phase3_table()
     phase_start_time = time.time()
     counters = {'done': 0}
     total = len(tasks)
@@ -1910,6 +1920,8 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     phase_duration = time.time() - phase_start_time
 
     ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration, insights)
+    if show_legends:
+        ui.print_legend_phase3_analytics()
 
     if settings.enable_execution_log and insights:
         logging.info(f"[PHASE 3] ANALYTICS: {insights}")
