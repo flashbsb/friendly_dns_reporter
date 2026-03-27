@@ -355,9 +355,12 @@ def _get_tree_connector(level, is_last):
     return prefix + connector
 
 def print_tree_node(title, level=0, is_last=False, color=INFO):
-    """Print a tree node header (e.g. [DOMAIN: google.com])."""
-    conn = _get_tree_connector(level, is_last)
-    print(f"  {conn}{color}[{title}]{RESET}")
+    """Print a tree node header. Level 0 uses ▶ for main groups."""
+    if level == 0:
+        print(f"  {color}▶ {title}{RESET}")
+    else:
+        conn = _get_tree_connector(level, is_last)
+        print(f"  {conn}{color}[{title}]{RESET}")
 
 def _fmt_port_serv(port_status, serv_status, lat):
     """Deep Service notation: OK (Service up), P_ONLY (Port only), CLOSE (Closed)."""

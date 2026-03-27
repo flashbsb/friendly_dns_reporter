@@ -947,7 +947,6 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
     # Order results by group then by server IP
     sorted_infra = sorted(infra_results.items(), key=lambda x: (x[1].get('groups', 'UNCATEGORIZED'), x[0]))
-    ui.print_phase_header("1: Server Infrastructure")
     
     current_group = None
     for i, (srv, res) in enumerate(sorted_infra):
@@ -1133,27 +1132,19 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     insights["Status Alive"] = alive
     insights["Status Dead"] = dead
 
-    if show_legends:
-        ui.print_legend_phase1_table()
-
     ui.print_phase_footer("1: Infrastructure", 
                          {"Total Servers": len(infra_results), "Status Alive": alive, "Status Dead": dead}, 
                          phase_duration, 
                          insights)
     
     if settings.enable_execution_log and insights:
-            if settings.enable_execution_log:
                 logging.info(f"[PHASE 1] ANALYTICS: {insights}")
-
-    if show_legends:
-        ui.print_legend_phase1_analytics()
 
     return infra_results, insights
 
 def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=False):
     """Phase 2: Zone Integrity & SOA Synchronization."""
     ui.print_phase("2: Zone Integrity", "Checking SOA visibility, authority, synchronization, transfer exposure, and policy signals.")
-    ui.print_phase_header("2: Zone Integrity")
     phase_start_time = time.time()
     zone_results = []
     active_items = {}
@@ -1641,8 +1632,6 @@ def run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache,
             insights["Zone Stability"] = "N/A (no repeated SOA/NS samples)"
 
     phase_duration = time.time() - phase_start_time
-    if show_legends:
-        ui.print_legend_phase2_table()
 
     ui.print_phase_footer("2: Zones", {
         "Domains Tested": len(zones),
@@ -1826,7 +1815,6 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     watcher.join(timeout=0.1)
 
     # Post-collection sorting and printing
-    ui.print_phase_header("3: Record Consistency")
     
     # Sort results
     sorted_results = sorted(results, key=lambda x: (str(x.get('domain_parent', '')), str(x.get('domain', '')), str(x.get('group', '')), str(x.get('server', ''))))
@@ -1920,8 +1908,6 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
             insights["Jitter Index"] = f"{(sum(jitter_values) / len(jitter_values)):.1f}ms avg spread"
 
     phase_duration = time.time() - phase_start_time
-    if show_legends:
-        ui.print_legend_phase3_table()
 
     ui.print_phase_footer("3: Record Consistency", {"Total Queries": len(results), "Success": succ, "Failures": fail}, phase_duration, insights)
 
