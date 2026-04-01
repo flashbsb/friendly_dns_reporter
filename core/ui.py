@@ -3,6 +3,8 @@ UI and Terminal Formatting for FriendlyDNSReporter.
 """
 import re
 import sys
+import io
+import threading
 import shutil
 from core.version import VERSION
 
@@ -26,6 +28,38 @@ BRIGHT_RED = _ansi("\033[91;1m")
 
 _PROGRESS_LAST = {}
 _PROGRESS_LINE_LEN = {}
+
+# --- Thread-local phase output buffering ---
+# When a phase is running in a parallel thread, all ui print calls are
+# captured into a per-thread StringIO buffer instead of going to stdout.
+# The main thread drains the buffers in order after all phases finish.
+_tlocal = threading.local()
+
+def activate_phase_buffer():
+    """Enable output buffering for the current thread."""
+    _tlocal.buffer = io.StringIO()
+
+def drain_phase_buffer():
+    """Return buffered output as a string and clear the buffer."""
+    buf = getattr(_tlocal, 'buffer', None)
+    if buf is None:
+        return ""
+    output = buf.getvalue()
+    _tlocal.buffer = None
+    return output
+
+def _p(*args, **kwargs):
+    """Print wrapper: writes to the thread-local buffer if active, else stdout."""
+    buf = getattr(_tlocal, 'buffer', None)
+    if buf is not None:
+        # Replicate print() behaviour into the buffer
+        end = kwargs.get('end', '\n')
+        sep = kwargs.get('sep', ' ')
+        buf.write(sep.join(str(a) for a in args) + end)
+    else:
+        print(*args, **kwargs)
+
+
 
 def strip_ansi(text):
     return re.sub(r"\x1b\[[0-9;]*m", "", str(text))
@@ -206,10 +240,10 @@ def print_header(threads, consistency, target):
 
 def print_phase(name, objective=None):
     width = 80
-    print(f"\n{BOLD}{INFO}━━ PHASE {name.upper()} {'━' * (width - len(name) - 12)}{RESET}")
+    _p(f"\n{BOLD}{INFO}━━ PHASE {name.upper()} {'━' * (width - len(name) - 12)}{RESET}")
     if objective:
-        print(f"  {objective}")
-    print("")
+        _p(f"  {objective}")
+    _p("")
 
 def print_phase_progress(done, total, label):
     """Print a compact progress bar for phase processing."""
@@ -218,20 +252,20 @@ def print_phase_progress(done, total, label):
     filled = int(pct * width)
     bar = f"{'█' * filled}{'░' * (width - filled)}"
     pct_str = f"{pct * 100:.0f}%"
-    print(f"  PROGRESS ▏{bar}▏ {pct_str} ({done}/{total}) {label}")
+    _p(f"  PROGRESS ▏{bar}▏ {pct_str} ({done}/{total}) {label}")
 
 def print_phase_snapshot(title, items, interpretation=None):
     width = 80
-    print(f"\n  ┏━ {BOLD}{title.upper()}{RESET} {'━' * (width - len(title) - 6)}┓")
+    _p(f"\n  ┏━ {BOLD}{title.upper()}{RESET} {'━' * (width - len(title) - 6)}┓")
     
     formatted_rows = _format_metrics(items, width=3)
     for row in formatted_rows:
         clean_row = strip_ansi(row)
         padding = width - len(clean_row) - 3
-        print(f"  ┃ {row}{' ' * padding} ┃")
+        _p(f"  ┃ {row}{' ' * padding} ┃")
     
     if interpretation:
-        print(f"  ┠{'─' * (width - 2)}┨")
+        _p(f"  ┠{'─' * (width - 2)}┨")
         # Wrap interpretation if too long
         words = interpretation.split()
         lines = []
@@ -246,32 +280,33 @@ def print_phase_snapshot(title, items, interpretation=None):
         for i, line in enumerate(lines):
             prefix = f"{BOLD}[TAKEAWAY]{RESET}: " if i == 0 else "            "
             padding = width - len(strip_ansi(prefix)) - len(line) - 3
-            print(f"  ┃ {prefix}{line}{' ' * padding} ┃")
+            _p(f"  ┃ {prefix}{line}{' ' * padding} ┃")
             
-    print(f"  ┗{'━' * (width - 2)}┛")
+    _p(f"  ┗{'━' * (width - 2)}┛")
 
 def _print_boxed_card(title, lines, width=80):
     """Generic helper to print a boxed help/info card."""
-    print(f"\n  ┌─ {BOLD}{title}{RESET} {'─' * (width - len(title) - 6)}┐")
+    _p(f"\n  ┌─ {BOLD}{title}{RESET} {'─' * (width - len(title) - 6)}┐")
     for line in lines:
         clean_line = strip_ansi(line)
         if len(clean_line) > width - 4:
             line = _ellipsize(line, width - 7)
             clean_line = strip_ansi(line)
         padding = width - len(clean_line) - 4
-        print(f"  │ {line}{' ' * padding} │")
-    print(f"  └{'─' * (width - 2)}┘")
+        _p(f"  │ {line}{' ' * padding} │")
+    _p(f"  └{'─' * (width - 2)}┘")
 
 def print_phase_header(name):
     # Clean separator between phase intro and data rows
-    print(f"  {'─' * 78}")
+    _p(f"  {'─' * 78}")
 
 def print_summary_table(total, success, fail, div, sync_issues, reports, duration: float = 0.0, sec_score=0, priv_score=0, show_legend=True, scores_available=False, security_available=False, privacy_available=False, show_security=True, show_privacy=True, takeaways=None, score_breakdown=None):
     width = 80
     build_tag = f"build v{VERSION}"
     
     print("\n" + "┏" + "━" * (width - 2) + "┓")
-    print(f"┃ {BOLD}FINAL DIAGNOSTIC DASHBOARD{RESET} {' ' * (width - 32 - len(build_tag))} {INFO}{build_tag}{RESET} ┃")
+    pad = 76 - 26 - 1 - len(build_tag)
+    print(f"┃ {BOLD}FINAL DIAGNOSTIC DASHBOARD{RESET}{' ' * pad} {INFO}{build_tag}{RESET} ┃")
     print("┣" + "━" * (width - 2) + "┫")
     
     metrics = [
@@ -284,7 +319,7 @@ def print_summary_table(total, success, fail, div, sync_issues, reports, duratio
     
     for label, val in metrics:
         clean_val = strip_ansi(val)
-        padding = (width - 4) - len(label) - len(clean_val)
+        padding = 76 - len(label) - 2 - len(clean_val)
         print(f"┃ {label}: {val}{' ' * padding} ┃")
     
     print("┣" + "━" * (width - 2) + "┫")
@@ -294,41 +329,47 @@ def print_summary_table(total, success, fail, div, sync_issues, reports, duratio
         sec_clr = get_score_color(sec_score)
         val_str = f"{sec_clr}{sec_score}/100{RESET}" if security_available else f"{WARN}N/A{RESET}"
         lbl = "SECURITY SCORE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
+        padding = 56 - len(strip_ansi(val_str))
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * padding} ┃")
 
     if show_privacy:
         priv_clr = get_score_color(priv_score)
         val_str = f"{priv_clr}{priv_score}/100{RESET}" if privacy_available else f"{WARN}N/A{RESET}"
         lbl = "PRIVACY SCORE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
+        padding = 56 - len(strip_ansi(val_str))
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * padding} ┃")
 
     if scores_available:
         avg_score = (sec_score + priv_score) / 2
         grade = format_grade(avg_score)
         val_str = f"{grade} ({avg_score:.1f}%)"
         lbl = "GLOBAL GRADE"
-        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * (width - 24 - len(strip_ansi(val_str)))} ┃")
+        padding = 56 - len(strip_ansi(val_str))
+        print(f"┃ {BOLD}{lbl:18}:{RESET} {val_str}{' ' * padding} ┃")
 
     if score_breakdown:
         print("┣" + "━" * (width - 2) + "┫")
-        print(f"┃ {UNDER}SCORING BREAKDOWN{RESET}{' ' * (width - 21)} ┃")
+        print(f"┃ {UNDER}SCORING BREAKDOWN{RESET}{' ' * (76 - 17)} ┃")
         for item in score_breakdown[:6]: # Limit to top 6
             icon = f"{OK}✔{RESET}" if "OK" in item.upper() or "+" in item else (f"{FAIL}✘{RESET}" if "FAIL" in item.upper() or "-" in item else f"{INFO}•{RESET}")
             clean_item = strip_ansi(item)
-            padding = (width - 8) - len(clean_item)
+            padding = 76 - 3 - len(clean_item)
             print(f"┃  {icon} {item}{' ' * padding} ┃")
 
     if takeaways:
         print("┣" + "━" * (width - 2) + "┫")
-        print(f"┃ {BOLD}EXECUTIVE TAKEAWAYS{RESET}{' ' * (width - 23)} ┃")
+        print(f"┃ {BOLD}EXECUTIVE TAKEAWAYS{RESET}{' ' * (76 - 19)} ┃")
         for item in takeaways[:5]:
             clean_item = strip_ansi(item)
-            padding = (width - 8) - len(clean_item)
-            print(f"┃  {WARN}!{RESET} {item:75} ┃")
+            if len(clean_item) > 73:
+                item = _ellipsize(item, 73)
+                clean_item = strip_ansi(item)
+            padding = max(0, 73 - len(clean_item))
+            print(f"┃  {WARN}!{RESET} {item}{' ' * padding} ┃")
     
     print("┣" + "━" * (width - 2) + "┫")
     timer_str = f"{duration:6.2f}s"
-    print(f"┃ {BOLD}TIME:{RESET} {timer_str} | {INFO}friendly-dns-reporter{RESET}{' ' * (width - 12 - len(timer_str) - 21 - 4)} ┃")
+    print(f"┃ {BOLD}TIME:{RESET} {timer_str} | {INFO}friendly-dns-reporter{RESET}{' ' * (46 - len(timer_str))} ┃")
     print("┗" + "━" * (width - 2) + "┛")
     
     if show_legend:
@@ -357,10 +398,10 @@ def _get_tree_connector(level, is_last):
 def print_tree_node(title, level=0, is_last=False, color=INFO):
     """Print a tree node header. Level 0 uses ▶ for main groups."""
     if level == 0:
-        print(f"  {color}▶ {title}{RESET}")
+        _p(f"  {color}▶ {title}{RESET}")
     else:
         conn = _get_tree_connector(level, is_last)
-        print(f"  {conn}{color}[{title}]{RESET}")
+        _p(f"  {conn}{color}[{title}]{RESET}")
 
 def _fmt_port_serv(port_status, serv_status, lat):
     """Deep Service notation: OK (Service up), P_ONLY (Port only), CLOSE (Closed)."""
@@ -432,7 +473,10 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     caps = f"{_cap('dnssec', 'S')}{_cap('edns0', 'E')}{_cap('cookies', 'K')}{_cap('qname_min', 'Q')}{_cap('ecs', 'X')}"
 
     # Status
-    alive_str = f"{OK}ALIVE{RESET}" if not data['is_dead'] else f"{FAIL}DEAD{RESET}"
+    if data.get('no_dns'):
+        alive_str = f"{WARN}NO_DNS{RESET}"
+    else:
+        alive_str = f"{OK}ALIVE{RESET}" if not data.get('is_dead') else f"{FAIL}DEAD{RESET}"
     
     # Granular Score
     score = data.get('infrastructure_score', 0)
@@ -444,7 +488,7 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     tree_indent = "   " * level
 
     # Layout: IP ADDRESS= srv | RELIABILITY (PING)= rel_str | U53 (ms)= u53 | T53 (ms)= t53 | DoT (ms)= dot | DoH (ms)= doh | Sc= score | Status= alive
-    print(f"  {conn}IP ADDRESS={DIM} {RESET}{srv} | RELIABILITY (PING)={rel_str} | U53 (ms)={u53_lat} | T53 (ms)={t53_lat} | DoT (ms)={dot_lat} | DoH (ms)={doh_lat} | Sc={score_str} | Status={alive_str}")
+    _p(f"  {conn}IP ADDRESS={DIM} {RESET}{srv} | RELIABILITY (PING)={rel_str} | U53 (ms)={u53_lat} | T53 (ms)={t53_lat} | DoT (ms)={dot_lat} | DoH (ms)={doh_lat} | Sc={score_str} | Status={alive_str}")
 
     profile = data.get("server_profile", "unknown")
     resolver_class = data.get("classification", "UNKNOWN")
@@ -492,7 +536,7 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     res_padding = " " * max(0, 18 - len(res_combined))
     res_display = f"{resolver_clr}{resolver_class}{RESET}/{conf_clr}{resolver_conf}{RESET}{res_padding}"
 
-    print(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile_clr}{profile:9}{RESET} | {BOLD}Resolver{RESET}: {res_display} | {BOLD}Version{RESET}: {version_clr}{version}{RESET}")
+    _p(f"{sub_prefix}{BOLD}Profile{RESET}  : {profile_clr}{profile:9}{RESET} | {BOLD}Resolver{RESET}: {res_display} | {BOLD}Version{RESET}: {version_clr}{version}{RESET}")
     
     # ├─ Transit (Ping/UDP/TCP)
     ping_avg = _fmt_latency(data.get('latency'))
@@ -500,7 +544,7 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     udp53 = _fmt_latency(data.get('udp53_probe_lat'))
     tcp53 = _fmt_latency(data.get('port53t_probe_lat'))
     ping_status_clr = (OK if data.get('ping')=='OK' else FAIL) if data.get('latency') is not None else DIM
-    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_status_clr}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
+    _p(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_status_clr}{ping_avg}{RESET} {ping_range} | DNS: UDP={udp53} | TCP={tcp53}")
     
     # ├─ Crypto (DoT/DoH)
     dot_status = data.get('dot', 'FAIL')
@@ -510,7 +554,7 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     # If it's N/A, we use DIM, otherwise we use the status color
     dot_clr = (OK if dot_status=='OK' else FAIL) if data.get('dot_lat') is not None else DIM
     doh_clr = (OK if doh_status=='OK' else FAIL) if data.get('doh_lat') is not None else DIM
-    print(f"{sub_prefix}{BOLD}Crypto{RESET}   : DoT={dot_clr}{dot_full}{RESET} | DoH={doh_clr}{doh_full}{RESET}")
+    _p(f"{sub_prefix}{BOLD}Crypto{RESET}   : DoT={dot_clr}{dot_full}{RESET} | DoH={doh_clr}{doh_full}{RESET}")
     
     # └─ Features (Caps/DNSSEC/QNAME)
     # Re-evaluating colors for potential N/A
@@ -522,7 +566,7 @@ def print_infra_detail(srv, data, level=1, is_last=False):
     if qname_min_str in ["N/A", "DISABLED", "NONE", "UNKNOWN"]: q_clr = DIM
     else: q_clr = qname_clr
 
-    print(f"{last_sub_prefix}{BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={d_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={q_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
+    _p(f"{last_sub_prefix}{BOLD}Features{RESET} : {caps} | {BOLD}DNSSEC{RESET}={d_clr}{dnssec_mode}{RESET} | {BOLD}QNAME-Min{RESET}={q_clr}{qname_min}{RESET} | {BOLD}WebRisk{RESET}={web_risk_str}")
 
 def print_zone_detail(srv, domain, res, level=2, is_last=False):
     serial = res.get('serial', '?')
@@ -591,7 +635,7 @@ def print_zone_detail(srv, domain, res, level=2, is_last=False):
     axfr_out = _ellipsize(axfr_str, 12)
     
     # Layout: SERVER= srv | SOA SERIAL= serial_out | LATENCY= lat_str | Sc= score_str | AA= aa_str | AXFR= axfr_out
-    print(f"  {conn}SERVER={DIM} {RESET}{server_str} | SOA SERIAL={serial_out} | LATENCY={lat_str} | Sc={score_str} | AA={aa_str} | AXFR={axfr_clr}{axfr_out}{RESET}")
+    _p(f"  {conn}SERVER={DIM} {RESET}{server_str} | SOA SERIAL={serial_out} | LATENCY={lat_str} | Sc={score_str} | AA={aa_str} | AXFR={axfr_clr}{axfr_out}{RESET}")
 
     dnssec = res.get("dnssec")
     dnssec_str = f"{OK}SIGNED{RESET}" if dnssec is True else (f"{FAIL}UNSIGNED{RESET}" if dnssec is False else "N/E")
@@ -611,22 +655,22 @@ def print_zone_detail(srv, domain, res, level=2, is_last=False):
     last_sub_prefix = "  " + tree_indent + "└─ "
 
     # ├─ Audit (Scope/DNSSEC/CAA/NS)
-    print(f"{sub_prefix}{BOLD}Audit{RESET}    : Scope={scope_clr}{scope}{RESET} | DNSSEC={dnssec_str} | CAA={caa_str} | NS-Consistent={ns_consistent}")
+    _p(f"{sub_prefix}{BOLD}Audit{RESET}    : Scope={scope_clr}{scope}{RESET} | DNSSEC={dnssec_str} | CAA={caa_str} | NS-Consistent={ns_consistent}")
     
     # ├─ Timers (The new comparison table)
     timer_line = _fmt_soa_timers(res.get("soa_timers"))
-    print(f"{sub_prefix}{BOLD}Timers{RESET}   : {timer_line} ({timer_audit_str})")
+    _p(f"{sub_prefix}{BOLD}Timers{RESET}   : {timer_line} ({timer_audit_str})")
     
     # ├─ Transit (Ping/SOA/NS/AXFR)
     ping_lat = _fmt_latency(res.get('ping_latency'))
     soa_lat_full = _fmt_latency(res.get('soa_latency'))
     ns_lat_full = _fmt_latency(res.get('ns_latency'))
-    print(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_lat} | SOA: UDP={soa_lat_full} | NS: UDP={ns_lat_full}")
+    _p(f"{sub_prefix}{BOLD}Transit{RESET}  : Ping={ping_lat} | SOA: UDP={soa_lat_full} | NS: UDP={ns_lat_full}")
     
     # └─ Evidence (SOA/AXFR/CAA)
     soa_ev = _fmt_probe_evidence(res, 'soa', 'SOA')
     axfr_ev = f"{axfr_clr}{res.get('axfr_detail', 'N/A')}{RESET}"
-    print(f"{last_sub_prefix}{BOLD}Evidence{RESET} : {soa_ev} | AXFR={axfr_ev}")
+    _p(f"{last_sub_prefix}{BOLD}Evidence{RESET} : {soa_ev} | AXFR={axfr_ev}")
 
 def print_zone_audit_block(domain, audit):
     """Print zone audit as a boxed block for visual clarity."""
@@ -644,40 +688,49 @@ def print_zone_audit_block(domain, audit):
     glue_ok = audit.get("glue_ok")
     glue_str = f"{OK}OK{RESET}" if glue_ok else (f"{FAIL}FAIL{RESET}" if glue_ok is False else f"{WARN}N/E{RESET}")
 
-    print(f"     ┌─ {BOLD}ZONE AUDIT: {domain}{RESET} ──────────────────────────────────────")
-    print(f"     │ DNSSEC: {sec_str}  Timers: {tim_str}{m_str}")
-    print(f"     │ Glue: {glue_str}  Web-Risk: {web_str}")
+    title = f"{BOLD}ZONE AUDIT: {domain}{RESET}"
+    str_len = 12 + len(domain)
+    # Target visual width ~64
+    dashes = max(10, 64 - 8 - 1 - str_len)
+    
+    _p(f"     ┌─ {title} {'─' * dashes}")
+    _p(f"     │ DNSSEC: {sec_str}  Timers: {tim_str}{m_str}")
+    _p(f"     │ Glue: {glue_str}  Web-Risk: {web_str}")
     if not t_ok and audit.get("timers_issues"):
         for issue in audit["timers_issues"]:
-            print(f"     │ {WARN}⚠ {issue}{RESET}")
+            _p(f"     │ {WARN}⚠ {issue}{RESET}")
     if audit.get("axfr_exposed"):
-        print(f"     │ {FAIL}⚠ AXFR VULNERABLE — zone transfer accepted{RESET}")
-    print(f"     └─────────────────────────────────────────────────────────")
+        _p(f"     │ {FAIL}⚠ AXFR VULNERABLE — zone transfer accepted{RESET}")
+    _p(f"     └{'─' * (9 + str_len + dashes - 6)}")
 
 def print_warning(msg):
-    print(f"  {WARN}{msg}{RESET}")
+    _p(f"  {WARN}{msg}{RESET}")
 
 def print_phase_footer(name, metrics, duration: float = 0.0, insights=None):
     width = 80
-    print(f"  ── PHASE {name.upper()} SUMMARY {'─' * (width - len(name) - 20)}")
-    
-    rows = _format_metrics(list(metrics.items()), width=3)
-    for r in rows:
-        print(f"  {r}")
+    summary_parts = [f"{k}: {v}" for k, v in metrics.items()]
+    summary_line = " | ".join(summary_parts)
+    dashes = max(0, width - len(strip_ansi(summary_line)) - len(name) - 18)
+    _p(f"\n  {DIM}┄ {name.upper()} SUMMARY {'┄' * dashes}{RESET}")
+    _p(f"  {summary_line}  {DIM}({duration:.1f}s){RESET}")
 
     if insights:
-        print(f"  ── ANALYTICAL SIGNALS {'─' * (width - 24)}")
-        for k, v in insights.items():
-            # Determine icon based on key
-            icon = f"{INFO}[i]{RESET}"
-            if any(x in k.upper() for x in ["HEALTH", "COMPLIANCE", "STABILITY"]): icon = f"{OK}[H]{RESET}"
-            if any(x in k.upper() for x in ["EXPOSURE", "RISK", "VULN"]): icon = f"{FAIL}[×]{RESET}"
-            if any(x in k.upper() for x in ["FALLBACK", "LATENCY"]): icon = f"{WARN}[!]{RESET}"
-            print(f"  {icon} {BOLD}{k:22}{RESET}: {v}")
+        skip_keys = {"total servers", "status alive", "status dead", "total checks",
+                     "total queries", "execution time"}
+        signals = {k: v for k, v in insights.items()
+                   if k.lower() not in skip_keys}
+        if signals:
+            _p(f"  {DIM}┄ SIGNALS {'┄' * (width - 12)}{RESET}")
+            items = list(signals.items())
+            for i in range(0, len(items), 2):
+                left_k, left_v = items[i]
+                if i + 1 < len(items):
+                    right_k, right_v = items[i + 1]
+                    _p(f"  {BOLD}{left_k:22}{RESET}: {_ellipsize(left_v, 28):<30}  {BOLD}{right_k:22}{RESET}: {_ellipsize(right_v, 28)}")
+                else:
+                    _p(f"  {BOLD}{left_k:22}{RESET}: {_ellipsize(left_v, 55)}")
+    _p(f"  {DIM}{'─' * width}{RESET}\n")
 
-    if duration > 0.0:
-        print(f"  Done in {duration:.2f}s")
-    print(f"  {'─' * width}")
 
 def format_result(target, group, server, rtype, status, latency, is_consistent, level=3, is_last=False, warn_ms=150, crit_ms=500, ad=False):
     if status == "NOERROR" or status == "NXDOMAIN":
@@ -707,7 +760,7 @@ def print_record_findings(findings):
     if not findings:
         return
         
-    print(f"       ┌─ {BOLD}FINDINGS{RESET} ─────────────────────────────────────────────┐")
+    _p(f"       ┌─ {BOLD}FINDINGS{RESET} ─────────────────────────────────────────────┐")
     for finding in findings:
         if any(w in finding.upper() for w in ["INVAL!", "MISSING", "REQUIRED", "DANGLING"]):
             clr = FAIL
@@ -717,8 +770,8 @@ def print_record_findings(findings):
             clr = INFO
         # Truncate long findings to fit box
         display = finding if len(finding) <= 55 else finding[:52] + "..."
-        print(f"       │ {clr}⚠ {display}{RESET}")
-    print(f"       └─────────────────────────────────────────────────────────┘")
+        _p(f"       │ {clr}⚠ {display}{RESET}")
+    _p(f"       └─────────────────────────────────────────────────────────┘")
 
 def print_record_context(record, level=3):
     """Print structured diagnostic context for the record."""
@@ -749,16 +802,25 @@ def print_record_context(record, level=3):
     sub_prefix = "  " + tree_indent + "├─ "
     last_sub_prefix = "  " + tree_indent + "└─ "
 
-    print(f"{sub_prefix}Transit: {BOLD}Ping{RESET}={_fmt_latency(record.get('ping_latency'))} | {BOLD}DNS: UDP{RESET}={_fmt_latency(record.get('latency'))} | {BOLD}Amplification{RESET}: {amp_str}")
-    print(f"{sub_prefix}Crypto : {BOLD}DoT{RESET}={_fmt_latency(record.get('dot_latency'))} | {BOLD}DoH{RESET}={_fmt_latency(record.get('doh_latency'))}")
-    print(f"{sub_prefix}Perf   : {BOLD}Jitter{RESET}={_fmt_latency(record.get('latency_jitter'))} | {BOLD}Avg{RESET}={_fmt_latency(record.get('latency_avg'))} | {BOLD}Chain{RESET}: {chain_str}")
-    print(f"{last_sub_prefix}{BOLD}NSID{RESET}: {INFO}{nsid}{RESET} | {BOLD}Answers{RESET}: {INFO}{answers}{RESET}")
+    _p(f"{sub_prefix}Transit: {BOLD}Ping{RESET}={_fmt_latency(record.get('ping_latency'))} | {BOLD}DNS: UDP{RESET}={_fmt_latency(record.get('latency'))} | {BOLD}Amplification{RESET}: {amp_str}")
+    _p(f"{sub_prefix}Crypto : {BOLD}DoT{RESET}={_fmt_latency(record.get('dot_latency'))} | {BOLD}DoH{RESET}={_fmt_latency(record.get('doh_latency'))}")
+    _p(f"{sub_prefix}Perf   : {BOLD}Jitter{RESET}={_fmt_latency(record.get('latency_jitter'))} | {BOLD}Avg{RESET}={_fmt_latency(record.get('latency_avg'))} | {BOLD}Chain{RESET}: {chain_str}")
+    _p(f"{last_sub_prefix}{BOLD}NSID{RESET}: {INFO}{nsid}{RESET} | {BOLD}Answers{RESET}: {INFO}{answers}{RESET}")
 
 def print_progress(current, total, prefix="", length=30, status_suffix=""):
-    """Prints a carriage-return progress bar."""
+    """Prints a carriage-return progress bar. Buffer-aware: when a phase buffer is
+    active (parallel execution), emits periodic text milestones instead of live bars."""
     percent = (current / total) * 100
     if current >= total:
         status_suffix = ""
+
+    # When buffered (parallel phase), suppress progress milestones entirely.
+    # The output is shown all at once after execution — live progress has no meaning.
+    buf = getattr(_tlocal, 'buffer', None)
+    if buf is not None:
+        return
+
+
     if not COLOR_ENABLED:
         bucket = int(percent // 10)
         if current in (1, total) or _PROGRESS_LAST.get(prefix) != bucket:
@@ -781,6 +843,7 @@ def print_progress(current, total, prefix="", length=30, status_suffix=""):
     if current == total:
         _PROGRESS_LINE_LEN[prefix] = 0
         print()
+
 
 def format_progress_status(active_items=None, idle_for=0.0):
     active_items = active_items or []
@@ -947,94 +1010,129 @@ def print_legend_advanced_analytics():
     ])
 
 
+
 def print_advanced_analytics(advanced):
-    """Print the consolidated advanced analytics with visual bars and structured cards."""
+    """Print consolidated cross-phase analysis section."""
     width = 80
-
-    # Worst & Best Servers with visual progress bars
-    wb = advanced.get("worst_best_servers", {})
+    wb    = advanced.get("worst_best_servers", {})
     worst = wb.get("worst", [])
-    best = wb.get("best", [])
-    if worst or best:
-        print(f"\n  {BOLD}SERVER HEALTH RANKINGS{RESET}")
-        print(f"  {'─' * width}")
-
-        if worst:
-            print(f"  {FAIL}WORST SERVERS{RESET}")
-            for i, s in enumerate(worst):
-                bar_len = 12
-                filled = int((s['total'] / 100) * bar_len) if s['total'] > 0 else 0
-                bar = f"{'█' * filled}{'░' * (bar_len - filled)}"
-                score_clr = get_score_color(s['total'])
-                issues = ", ".join(s.get("issues", [])) or "Healthy"
-                print(f"    #{i+1} {s['server']:15} {bar} {score_clr}{s['total']:3d}{RESET}  {issues}")
-
-        if best:
-            print(f"\n  {OK}BEST SERVERS{RESET}")
-            for i, s in enumerate(best):
-                bar_len = 12
-                filled = int((s['total'] / 100) * bar_len) if s['total'] > 0 else 0
-                bar = f"{'█' * filled}{'░' * (bar_len - filled)}"
-                score_clr = get_score_color(s['total'])
-                issues = ", ".join(s.get("issues", [])) or "Healthy"
-                print(f"    #{i+1} {s['server']:15} {bar} {score_clr}{s['total']:3d}{RESET}  {issues}")
-
-        dead = wb.get("dead_count", 0)
-        if dead:
-            print(f"\n  {FAIL}⚠ {dead} dead server(s) scored 0{RESET}")
-
-    # Cross-Phase Correlations with structured cards
+    best  = wb.get("best",  [])
     cross = advanced.get("cross_phase_correlations", [])
+    problems = advanced.get("problem_ranking", [])
+    cov   = advanced.get("coverage_reliability", {})
+
+    # ── Section header ─────────────────────────────────────────────────────────
+    print(f"\n{'╔' + '═' * (width - 2) + '╗'}")
+    title = "CONSOLIDATED ANALYSIS"
+    pad = width - 4 - len(title)
+    print(f"║ {BOLD}{title}{RESET}{' ' * pad} ║")
+    print(f"{'╠' + '═' * (width - 2) + '╣'}")
+
+    any_section = False
+
+    # ── Server Health Rankings ─────────────────────────────────────────────────
+    def _server_bar(total, bar_len=10):
+        filled = int((total / 100) * bar_len) if total > 0 else 0
+        clr = get_score_color(total)
+        return f"{clr}{'█' * filled}{'░' * (bar_len - filled)}{RESET}"
+
+    dead = wb.get("dead_count", 0)
+    # Determine distinct scores to decide if worst != best
+    all_scores = [s['total'] for s in (worst + best)]
+    has_diff = len(set(all_scores)) > 1
+
+    if worst or best or dead:
+        any_section = True
+        print(f"║ {BOLD}SERVER HEALTH RANKINGS{RESET}{' ' * (width - 24)} ║")
+        # Show top-3 worst only when scores differ; otherwise just one ranking
+        show_list = worst[:3] if has_diff else []
+        if show_list:
+            print(f"║  {FAIL}▼ WORST{RESET}{' ' * (width - 10)} ║")
+            for i, s in enumerate(show_list):
+                line = f"   #{i+1}  {s['server']:15} {_server_bar(s['total'])} {get_score_color(s['total'])}{s['total']:3d}{RESET}"
+                print(f"║  {line}{' ' * (width - 4 - len(strip_ansi(line)))} ║")
+        # Top-3 best always
+        show_best = best[:3] if best else []
+        if show_best:
+            print(f"║  {OK}▲ BEST{RESET}{' ' * (width - 9)} ║")
+            for i, s in enumerate(show_best):
+                line = f"   #{i+1}  {s['server']:15} {_server_bar(s['total'])} {get_score_color(s['total'])}{s['total']:3d}{RESET}"
+                print(f"║  {line}{' ' * (width - 4 - len(strip_ansi(line)))} ║")
+        if dead:
+            line = f"   {FAIL}⚠ {dead} server(s) unreachable (scored 0){RESET}"
+            print(f"║  {line}{' ' * (width - 4 - len(strip_ansi(line)))} ║")
+        print(f"{'╠' + '═' * (width - 2) + '╣'}")
+
+    # ── Cross-Phase Correlations ───────────────────────────────────────────────
     if cross:
-        print(f"\n  {BOLD}CROSS-PHASE CORRELATIONS{RESET}")
-        print(f"  {'─' * width}")
-        for c in cross[:8]:
+        any_section = True
+        print(f"║ {BOLD}CROSS-PHASE CORRELATIONS{RESET}{' ' * (width - 26)} ║")
+        for c in cross[:6]:
             pattern_clr = FAIL if c['pattern'] == "degraded" else WARN
-            p_label = c['pattern'].upper()
             flags = (
                 [f"infra:{f}" for f in c['infra']] +
-                [f"zone:{f}" for f in c['zones']] +
-                [f"rec:{f}" for f in c['records']]
+                [f"zone:{f}"  for f in c['zones']] +
+                [f"rec:{f}"   for f in c['records']]
             )
-            print(f"  ┌─ {c['server']:15} {pattern_clr}{p_label:8}{RESET} {'─' * 40}")
-            # Print flags in rows of ~5
-            for j in range(0, len(flags), 5):
-                chunk = flags[j:j+5]
-                print(f"  │ [{'] ['.join(chunk)}]")
-            print(f"  └{'─' * 58}")
+            flags_str = "  ".join(f"[{f}]" for f in flags)
+            header = f"   {c['server']:15}  {pattern_clr}{c['pattern'].upper():10}{RESET}  {flags_str}"
+            clean = strip_ansi(header)
+            pad = max(0, width - 4 - len(clean))
+            print(f"║  {header}{' ' * pad} ║")
+        print(f"{'╠' + '═' * (width - 2) + '╣'}")
 
-    # Problem Ranking with severity badges
-    problems = advanced.get("problem_ranking", [])
+    # ── Top Problems ──────────────────────────────────────────────────────────
     if problems:
-        print(f"\n  {BOLD}TOP PROBLEMS BY SEVERITY{RESET}")
-        print(f"  {'─' * width}")
-        for p in problems[:12]:
+        any_section = True
+        print(f"║ {BOLD}TOP PROBLEMS BY SEVERITY{RESET}{' ' * (width - 26)} ║")
+        for p in problems[:10]:
             sev_clr = FAIL if p['severity'] >= 7 else (WARN if p['severity'] >= 5 else INFO)
-            sev_badge = f"{sev_clr}[{p['severity']:2d}]{RESET}"
-            cat_clr = FAIL if p['severity'] >= 7 else (WARN if p['severity'] >= 5 else INFO)
-            print(f"  {sev_badge} {cat_clr}{p['category']:8}{RESET} {p['subject']:35} {p['detail']}")
+            cat_clr = sev_clr
+            badge = f"{sev_clr}[{p['severity']:2d}]{RESET}"
+            line = f"   {badge} {cat_clr}{p['category']:6}{RESET}  {p['subject']:30}  {p['detail']}"
+            clean = strip_ansi(line)
+            pad = max(0, width - 4 - len(clean))
+            if len(clean) > width - 4:
+                line = strip_ansi(line)[:width - 7] + "..."
+                pad = 0
+            print(f"║  {line}{' ' * pad} ║")
+        print(f"{'╠' + '═' * (width - 2) + '╣'}")
 
-    # Coverage Reliability with visual bars
-    cov = advanced.get("coverage_reliability", {})
+    # ── Coverage Reliability ──────────────────────────────────────────────────
     if cov:
-        print(f"\n  {BOLD}COVERAGE RELIABILITY{RESET}")
-        print(f"  {'─' * width}")
-        for phase_key, phase_label in [("phase1", "Phase 1"), ("phase2", "Phase 2"), ("phase3", "Phase 3")]:
+        any_section = True
+        print(f"║ {BOLD}COVERAGE RELIABILITY{RESET}{' ' * (width - 22)} ║")
+        phase_labels = [("phase1", "P1"), ("phase2", "P2"), ("phase3", "P3")]
+        for phase_key, phase_short in phase_labels:
             phase_data = cov.get(phase_key, {})
             if not phase_data:
                 continue
-            for k, v in phase_data.items():
-                if phase_key == "phase1" and k == "sample_size":
-                    continue
-                # Extract percentage from string like "5/5 (100%)"
+            skip_k = {"sample_size", "total_checks", "total_queries"}
+            items = [(k, v) for k, v in phase_data.items() if k not in skip_k]
+            if not items:
+                continue
+            for k, v in items:
                 pct_str = ""
+                bar_vis = ""
                 if isinstance(v, str) and "%" in v:
                     try:
                         pct = int(v.split("(")[1].split("%")[0])
                         bar_len = 8
                         filled = int((pct / 100) * bar_len)
                         pct_clr = OK if pct >= 80 else (WARN if pct >= 50 else FAIL)
-                        pct_str = f" {'█' * filled}{'░' * (bar_len - filled)} {pct_clr}{pct}%{RESET}"
+                        bar_vis = f"{'█' * filled}{'░' * (bar_len - filled)}"
+                        pct_str = f" {pct_clr}{bar_vis} {pct}%{RESET}"
                     except (IndexError, ValueError):
                         pass
-                print(f"    {phase_label} {k:15}: {v}{pct_str}")
+                label = f"{phase_short} {k}"
+                val_plain = strip_ansi(v)
+                line_plain = f"  {label:20}  {val_plain:16}{strip_ansi(pct_str)}"
+                pad = max(0, width - 4 - len(line_plain))
+                line_rich = f"  {DIM}{label:20}{RESET}  {v:16}{pct_str}"
+                print(f"║  {line_rich}{' ' * pad} ║")
+
+    if not any_section:
+        print(f"║  {DIM}No analysis data available.{RESET}{' ' * (width - 32)} ║")
+
+    print(f"{'╚' + '═' * (width - 2) + '╝'}")
+

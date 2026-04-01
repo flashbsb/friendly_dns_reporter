@@ -268,7 +268,7 @@ class DNSEngine:
         """Check if server supports EDNS0 and large UDP payloads."""
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(".", "NS")
             query.use_edns(edns=0, payload=4096)
             query_size = len(query.to_wire())
             response = dns.query.udp(query, server, timeout=self.timeout)
@@ -281,11 +281,11 @@ class DNSEngine:
         except:
             return DNSResponse(status="FAIL")
 
-    def check_recursion(self, server) -> DNSResponse:
+    def check_recursion(self, server, domain=".") -> DNSResponse:
         """Check if recursion is available."""
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(domain, "NS")
             query_size = len(query.to_wire())
             response = dns.query.udp(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000
@@ -331,15 +331,15 @@ class DNSEngine:
             except dns.exception.Timeout:
                 last_response = DNSResponse(status="TIMEOUT", latency=None, meta={"query_class": "CH", "query_name": name})
             except Exception as e:
-                last_response = DNSResponse(status="HIDDEN", meta={"query_class": "CH", "query_name": name, "error": str(e)})
+                last_response = DNSResponse(status="ERROR", meta={"query_class": "CH", "query_name": name, "error": str(e)})
                 
-        return last_response or DNSResponse(status="HIDDEN", meta={"query_class": "CH"})
+        return last_response or DNSResponse(status="ERROR", meta={"query_class": "CH"})
 
-    def check_dot(self, server) -> DNSResponse:
+    def check_dot(self, server, domain=".") -> DNSResponse:
         """Check if server supports DoT."""
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(domain, "NS")
             query_size = len(query.to_wire())
             response = dns.query.tls(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000
@@ -349,12 +349,12 @@ class DNSEngine:
         except:
             return DNSResponse(status="FAIL", protocol="tls", meta={"port": 853})
 
-    def check_doh(self, server) -> DNSResponse:
+    def check_doh(self, server, domain=".") -> DNSResponse:
         """Check if server supports DoH. SSL verification is configurable (Security 1.1)."""
         import requests
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(domain, "NS")
             wire_query = query.to_wire()
             url = f"https://{server}/dns-query"
             headers = {"Content-Type": "application/dns-message", "Accept": "application/dns-message"}
@@ -373,11 +373,11 @@ class DNSEngine:
         except:
             return DNSResponse(status="FAIL", protocol="https", meta={"port": 443})
 
-    def check_tcp(self, server) -> DNSResponse:
+    def check_tcp(self, server, domain=".") -> DNSResponse:
         """Perform a real DNS query over TCP."""
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(domain, "NS")
             query_size = len(query.to_wire())
             response = dns.query.tcp(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000
@@ -387,11 +387,11 @@ class DNSEngine:
         except:
             return DNSResponse(status="FAIL", protocol="tcp", meta={"port": 53})
 
-    def check_udp(self, server) -> DNSResponse:
+    def check_udp(self, server, domain=".") -> DNSResponse:
         """Perform a direct DNS query over UDP to measure DNS service responsiveness."""
         start = time.time()
         try:
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(domain, "NS")
             query_size = len(query.to_wire())
             response = dns.query.udp(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000
@@ -457,20 +457,29 @@ class DNSEngine:
         current_target = target
         depth = 0
         latencies = []
+        current_server = server
+        current_rd = rd
         
         while depth < max_depth:
             depth += 1
             has_ip = False
-            found_cname = None
             
             try:
                 # Check for address records
                 for family in ["A", "AAAA"]:
-                    res = self.query(server, current_target, family, rd=rd)
+                    res = self.query(current_server, current_target, family, rd=current_rd)
+                    
+                    # If the auth server refuses the query for an external target, fallback to a public resolver
+                    if res.status in ["REFUSED", "TIMEOUT", "SERVFAIL", "NXDOMAIN"] and not res.answers and current_server == server:
+                        res = self.query("8.8.8.8", current_target, family, rd=True)
+                        if res.status != "TIMEOUT":
+                            current_server = "8.8.8.8"
+                            current_rd = True
+
                     if res.latency:
                         latencies.append(res.latency)
                     if res.status == "NOERROR" and res.answers:
-                        # Check if any answer is an IP or another CNAME
+                        # Check if any answer is an IP
                         for ans in res.answers:
                             if family == "A":
                                 try:
@@ -486,16 +495,18 @@ class DNSEngine:
                                 except: pass
                         
                         if has_ip: break
-                        
-                        # Check for CNAME in answer if no IP found (sometimes resolvers return the CNAME)
-                        # But self.query returns the final answers if RD=True and resolver handles it.
-                        # If we are querying an auth server with RD=False, we might get a CNAME.
                 
                 if has_ip:
                     return True, "RESOLVES", (sum(latencies) / len(latencies)) if latencies else None, depth
                 
                 # If no IP, check if it's a CNAME to follow
-                res_cname = self.query(server, current_target, "CNAME", rd=rd)
+                res_cname = self.query(current_server, current_target, "CNAME", rd=current_rd)
+                if res_cname.status in ["REFUSED", "TIMEOUT", "SERVFAIL", "NXDOMAIN"] and not res_cname.answers and current_server == server:
+                     res_cname = self.query("8.8.8.8", current_target, "CNAME", rd=True)
+                     if res_cname.status != "TIMEOUT":
+                         current_server = "8.8.8.8"
+                         current_rd = True
+
                 if res_cname.latency:
                     latencies.append(res_cname.latency)
                 if res_cname.status == "NOERROR" and res_cname.answers:
@@ -544,7 +555,7 @@ class DNSEngine:
             from dns.edns import GenericOption
             ecs_data = b'\x00\x01\x18\x00\x01\x02\x03' 
             options = [GenericOption(8, ecs_data)]
-            query = dns.message.make_query("google.com", "A")
+            query = dns.message.make_query(".", "NS")
             query.use_edns(edns=0, payload=1232, options=options)
             response = dns.query.udp(query, server, timeout=self.timeout)
             latency = (time.time() - start) * 1000

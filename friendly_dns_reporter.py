@@ -541,21 +541,14 @@ def compare_consistency(queries, settings):
         if q.status != first.status: 
             return False, f"Status mismatch: Sample 1={first.status}, Sample {i+1}={q.status}"
         
-        # 2. Answer Content Mismatch (Conditional)
-        if settings.strict_ip_check:
-            if settings.strict_order_check:
-                # Compare as lists (exact order)
-                if q.answers != first.answers:
-                    return False, f"Order mismatch: Sample 1={first.answers}, Sample {i+1}={q.answers}"
-            else:
-                # Compare as sets (order independent)
-                if set(q.answers) != set(first.answers): 
-                    only_in_first = set(first.answers) - set(q.answers)
-                    only_in_q = set(q.answers) - set(first.answers)
-                    reason = "Answer set mismatch"
-                    if only_in_first: reason += f"; Missing IPs sample {i+1}: {list(only_in_first)[:2]}"
-                    if only_in_q: reason += f"; New IPs sample {i+1}: {list(only_in_q)[:2]}"
-                    return False, reason
+        # 2. Answer Content Mismatch (Set comparison to avoid Round-Robin DIV!)
+        if set(q.answers) != set(first.answers): 
+            only_in_first = set(first.answers) - set(q.answers)
+            only_in_q = set(q.answers) - set(first.answers)
+            reason = "Answer set mismatch"
+            if only_in_first: reason += f"; Missing IPs sample {i+1}: {list(only_in_first)[:2]}"
+            if only_in_q: reason += f"; New IPs sample {i+1}: {list(only_in_q)[:2]}"
+            return False, reason
         
         # 3. TTL Mismatch (Conditional)
         if settings.strict_ttl_check:
@@ -673,7 +666,7 @@ def start_phase_watchdog(label, counters, total, active_items, lock, settings=No
     watcher.start()
     return stop_event, watcher, state
 
-def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=False):
+def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engine, settings, lock, domains_raw=None, dns_groups=None, show_legends=False):
     """Phase 1: Deep Infrastructure Check (Once per server)."""
     ui.print_phase("1: Server Infrastructure", "Testing reachability, DNS service responsiveness, encryption, and exposure.")
     if show_legends:
@@ -682,11 +675,23 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
     infra_results = {}
     active_items = {}
     
+    srv_target_domain = {}
+    if domains_raw and dns_groups:
+        for srv in servers:
+            srv_my_groups = [g for g, data in dns_groups.items() if srv in data.get("servers", [])]
+            for d in domains_raw:
+                d_groups = [g.strip().upper() for g in d.get("GROUPS", "").split(",")]
+                if any(g in d_groups for g in srv_my_groups):
+                    srv_target_domain[srv] = d.get("DOMAIN")
+                    break
+    
     def _check_server(srv):
         srv = srv.strip()
         if not srv: return
         with lock:
             active_items[srv] = "server"
+            
+        test_domain = srv_target_domain.get(srv) or settings.default_query_domain
         
         res = {
             "server": srv,
@@ -723,7 +728,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
 
         # UDP 53 (direct DNS responsiveness probe)
         res["port53u"] = "OPEN"
-        udp_summary = _run_repeated_probe(lambda: dns_engine.check_udp(srv), critical_probe_repeats, {"OK"})
+        udp_summary = _run_repeated_probe(lambda: dns_engine.check_udp(srv, test_domain), critical_probe_repeats, {"OK", "NOERROR", "NXDOMAIN", "REFUSED", "SERVFAIL"})
         res["udp53_status_raw"] = udp_summary["status"]
         res["udp53_probe_lat"] = udp_summary["latency"]
         _store_probe_repeat_summary(res, "udp53_probe", udp_summary)
@@ -737,7 +742,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
         res["port53t_probe_lat"] = None
         _set_probe_observability(res, "tcp53_connect", res["port53t"], res["port53t_conn_lat"])
         if p53t_open:
-            tcp_summary = _run_repeated_probe(lambda: dns_engine.check_tcp(srv), critical_probe_repeats, {"OK"})
+            tcp_summary = _run_repeated_probe(lambda: dns_engine.check_tcp(srv, test_domain), critical_probe_repeats, {"OK", "NOERROR", "NXDOMAIN", "REFUSED", "SERVFAIL"})
             res["port53t_serv"] = tcp_summary["status"]
             res["port53t_probe_lat"] = tcp_summary["latency"]
             _store_probe_repeat_summary(res, "tcp53_probe", tcp_summary)
@@ -759,11 +764,13 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             res["version"] = "DISABLED"
             res["version_lat"] = None
 
-        r_res = dns_engine.check_recursion(srv) if settings.enable_recursion_check else None
+        r_res = dns_engine.check_recursion(srv, test_domain) if settings.enable_recursion_check else None
         if r_res:
-             # Logic for recursion: if it's a recursive server, we expect RA or NOERROR answers
-            is_rec = r_res.ra or r_res.status == "NOERROR"
-            res["recursion"] = "OPEN" if is_rec else "CLOSED"
+            if r_res.status in {"TIMEOUT", "FAIL", "ERROR"}:
+                res["recursion"] = r_res.status
+            else:
+                is_rec = r_res.ra or r_res.status == "NOERROR"
+                res["recursion"] = "OPEN" if is_rec else "CLOSED"
             res["recursion_lat"] = r_res.latency
             _set_probe_observability(res, "recursion", res["recursion"], res["recursion_lat"])
             _store_query_evidence(res, "recursion", r_res)
@@ -771,18 +778,19 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             res["recursion"] = "DISABLED"
             res["recursion_lat"] = None
         
-        # Service Validation: UDP is considered responsive if direct probe OK,
+        # Service Validation: UDP is considered responsive if direct probe returned a valid DNS response (not a network failure),
         # or if any auxiliary DNS check (version/recursion) returned a meaningful response
-        failure_statuses = {"TIMEOUT", "UNREACHABLE", "DISABLED"}
+        failure_statuses = {"TIMEOUT", "UNREACHABLE", "DISABLED", "ERROR", "FAIL"}
         version_responded = res["version"] not in failure_statuses
         recursion_responded = res["recursion"] not in failure_statuses
         udp_aux_ok = version_responded or recursion_responded
-        udp_serv_ok = res["udp53_status_raw"] == "OK" or udp_aux_ok
+        # Any response that is not a connection failure means the DNS service is alive
+        udp_serv_ok = (res.get("udp53_status_raw") not in failure_statuses) or udp_aux_ok
         udp_timeout_seen = any(status == "TIMEOUT" for status in [res.get("udp53_status_raw"), res.get("version"), res.get("recursion")])
         res["port53u_serv"] = "OK" if udp_serv_ok else ("TIMEOUT" if udp_timeout_seen else "FAIL")
         _set_probe_observability(res, "udp53_probe", res["port53u_serv"], res["udp53_probe_lat"], source="direct")
         
-        is_alive = (res["ping"] in ("OK", "DISABLED")) or udp_serv_ok or (res["port53t_serv"] == "OK")
+        is_alive = (res["ping"] in ("OK", "DISABLED")) or udp_serv_ok or (res.get("port53t_serv") not in failure_statuses and res.get("port53t_serv") != "N/A")
         
         if not is_alive:
             res["is_dead"] = True
@@ -790,6 +798,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
                 logging.info(f"[PHASE 1] SERVER {srv} IS DEAD (Ping Fail and Services Down)")
             for field in ["version", "recursion", "dot", "doh", "dnssec", "edns0", "open_resolver"]:
                  res[field] = "UNREACHABLE"
+            # Mapeamos port53t_serv e outros como FAIL se estava tudo inacessível
             res["port53t_serv"] = "FAIL"
             res["port853_serv"] = "FAIL"
             res["port443_serv"] = "FAIL"
@@ -831,7 +840,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             res["port853_conn_lat"] = _latency_or_none(p853_slat)
             _set_probe_observability(res, "dot_connect", res["port853"], res["port853_conn_lat"])
             if p853_open:
-                dot_summary = _run_repeated_probe(lambda: dns_engine.check_dot(srv), critical_probe_repeats, {"OK"}) if settings.enable_dot_check else {"status": "DISABLED", "latency": None, "meta": {}}
+                dot_summary = _run_repeated_probe(lambda: dns_engine.check_dot(srv, test_domain), critical_probe_repeats, {"OK", "NOERROR", "NXDOMAIN", "REFUSED", "SERVFAIL"}) if settings.enable_dot_check else {"status": "DISABLED", "latency": None, "meta": {}}
                 res["dot"] = dot_summary["status"]
                 res["dot_lat"] = dot_summary["latency"]
                 _store_probe_repeat_summary(res, "dot_probe", dot_summary)
@@ -846,7 +855,7 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             res["port443_conn_lat"] = _latency_or_none(p443_slat)
             _set_probe_observability(res, "doh_connect", res["port443"], res["port443_conn_lat"])
             if p443_open:
-                doh_summary = _run_repeated_probe(lambda: dns_engine.check_doh(srv), critical_probe_repeats, {"OK"}) if settings.enable_doh_check else {"status": "DISABLED", "latency": None, "meta": {}}
+                doh_summary = _run_repeated_probe(lambda: dns_engine.check_doh(srv, test_domain), critical_probe_repeats, {"OK", "NOERROR", "NXDOMAIN", "REFUSED", "SERVFAIL"}) if settings.enable_doh_check else {"status": "DISABLED", "latency": None, "meta": {}}
                 res["doh"] = doh_summary["status"]
                 res["doh_lat"] = doh_summary["latency"]
                 _store_probe_repeat_summary(res, "doh_probe", doh_summary)
@@ -923,7 +932,27 @@ def run_phase1_infrastructure(servers, srv_groups, srv_profiles, conn, dns_engin
             else:
                 res["web_risks"] = []
                 res["web_risk_lat"] = None
+            # If DoH is active and successful, port 443 being open is NOT a risk
+            if res.get("doh_status_raw") == "OK" and 443 in res.get("web_risks", []):
+                res["web_risks"].remove(443)
+            
             _set_probe_observability(res, "web_risk", "OPEN" if res["web_risks"] else "CLOSED", res["web_risk_lat"])
+            
+            # Check if at least one core DNS service is operational
+            # For TCP/DoT/DoH, they store the actual status string (e.g. REFUSED, SERVFAIL).
+            # If it's not a connection/network failure, the DNS application is answering.
+            dns_working = (
+                res.get("port53u_serv") == "OK" or 
+                (res.get("port53t_serv") not in failure_statuses and res.get("port53t_serv") != "N/A") or 
+                (res.get("dot") not in failure_statuses and res.get("dot") not in ("NO", "N/A")) or 
+                (res.get("doh") not in failure_statuses and res.get("doh") not in ("NO", "N/A"))
+            )
+            
+            if not dns_working and res.get("ping") in ("OK", "DISABLED"):
+                res["no_dns"] = True
+                res["is_dead"] = True # No point measuring DNS zones/records
+            else:
+                res["no_dns"] = False
 
         with lock:
             infra_results[srv] = res
@@ -1681,7 +1710,7 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
 
             if infra.get("is_dead"):
                 local_res = [{
-                    "domain": target, "group": group_name, "server": server, "type": rtype,
+                    "domain": target, "domain_parent": domain_parent, "group": group_name, "server": server, "type": rtype,
                     "status": "UNREACHABLE", "latency": None, "ping": "FAIL", "port53": "CLOSED",
                     "version": "DEAD", "recursion": "DEAD", "dot": "DEAD", "doh": "DEAD",
                     "nsid": None, "internally_consistent": "N/A", "answers": "SKIPPED: SERVER DOWN",
@@ -1846,53 +1875,57 @@ def run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, res
     reported_wildcards = set()
     
     for i, r in enumerate(sorted_results):
-        dom = r.get('domain_parent', 'UNKNOWN')
+        dom    = r.get('domain_parent', 'UNKNOWN')
         target = r.get('domain', 'UNKNOWN')
-        grp = r.get('group', 'UNCATEGORIZED')
-        srv = r.get('server', 'N/A')
-        
+        grp    = r.get('group', 'UNCATEGORIZED')
+        srv    = r.get('server', 'N/A')
+
         # 1. Domain Level
         if dom != current_domain:
             current_domain = dom
+            ui._p("")
             ui.print_tree_node(f"DOMAIN: {dom}", level=0)
             current_target = None
-            
-        # 2. Record (Target) Level
-        if target != current_target:
-            current_target = target
-            is_last_target = (i == len(sorted_results)-1) or (sorted_results[i+1].get('domain_parent') != dom)
-            ui.print_tree_node(f"REC: {target}", level=1, is_last=is_last_target)
-            current_group = None
-            
-        # 3. Group Level
-        if grp != current_group:
-            current_group = grp
-            is_last_grp = (i == len(sorted_results)-1) or (sorted_results[i+1].get('domain') != target)
-            ui.print_tree_node(f"GROUP: {grp}", level=2, is_last=is_last_grp)
 
-        # 4. Server Level
-        is_last_srv = (i == len(sorted_results)-1) or (sorted_results[i+1].get('group') != grp)
-        
+        # 2. Record (Target) + Record Type — single combined header
+        rec_key = (target, r.get('type', ''))
+        if (target, r.get('type', '')) != current_target:
+            current_target = rec_key
+            rtype_lbl = r.get('type', '?').upper()
+            is_last_target = (i == len(sorted_results) - 1) or (sorted_results[i + 1].get('domain_parent') != dom)
+            ui._p(f"  {'└─' if is_last_target else '├─'} {ui.DIM}{target}{ui.RESET}  {ui.INFO}[{rtype_lbl}]{ui.RESET}  {ui.DIM}({grp}){ui.RESET}")
+            current_group = None
+
+        # 3. Server result — compact single line
+        is_last_srv = (i == len(sorted_results) - 1) or (
+            sorted_results[i + 1].get('domain') != target or
+            sorted_results[i + 1].get('type') != r.get('type')
+        )
+
         current_zone_srv = (target, srv)
         has_wc, wc_ans, wc_latency = wildcard_cache.get(current_zone_srv, (False, [], None))
         r["wildcard_detected"] = has_wc
-        r["wildcard_answers"] = wc_ans or []
-        r["wildcard_latency"] = wc_latency
+        r["wildcard_answers"]  = wc_ans or []
+        r["wildcard_latency"]  = wc_latency
 
-        print(ui.format_result(
+        ui._p(ui.format_result(
             target, grp, srv, r.get('type', 'ERR'), r.get('status', 'ERROR'), r.get('latency'), r.get('is_consistent', False),
             level=3, is_last=is_last_srv,
             warn_ms=settings.rec_latency_warn, crit_ms=settings.rec_latency_crit, ad=r.get('ad', False)
         ))
-        ui.print_record_context(r, level=3)
-        
-        # Print semantic findings
+
+        # Show context only for alive servers (suppress noise for DEAD/UNREACH)
+        if r.get('status') not in ("UNREACHABLE", "ERROR") and r.get('latency') is not None:
+            ui.print_record_context(r, level=3)
+
+        # Semantic findings
         if r.get('findings'):
             ui.print_record_findings(r['findings'])
-            
+
         if has_wc and current_zone_srv not in reported_wildcards:
             reported_wildcards.add(current_zone_srv)
             ui.print_record_findings([f"Zone-level wildcard detected: random subdomains resolved to {wc_ans}"])
+
     
     # Phase 3 Analytics
     succ = sum(1 for r in results if r.get('status') == "NOERROR")
@@ -2447,7 +2480,6 @@ def main():
     parser.add_argument("-n", "--domains", default=settings.file_domains, help=f"Domains CSV (default: {settings.file_domains})")
     parser.add_argument("-g", "--groups", default=settings.file_groups, help=f"Groups CSV (default: {settings.file_groups})")
     parser.add_argument("-o", "--output", default=settings.log_dir, help="Output DIR")
-    parser.add_argument("-p", "--phases", help="Select phases to run (e.g. 1,3 or 2)")
     parser.add_argument("--legends", action="store_true", help="Show detailed field legends and analytics criteria (overrides ENABLE_UI_LEGENDS)")
     parser.add_argument("--no-disclaimer", action="store_true", help="Skip the legal disclaimer at startup")
     parser.add_argument("--install-missing-deps", action="store_true", help="Allow automatic installation of missing Python dependencies")
@@ -2470,17 +2502,6 @@ def main():
 
     # Silence DoH/DoT HTTPS warnings only after dependency checks and imports succeed.
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
-    # Process phase selection
-    run_p1 = settings.enable_phase_server
-    run_p2 = settings.enable_phase_zone
-    run_p3 = settings.enable_phase_record
-    
-    if args.phases:
-        selected = [p.strip() for p in args.phases.split(',')]
-        run_p1 = "1" in selected
-        run_p2 = "2" in selected
-        run_p3 = "3" in selected
 
     ui.print_banner(VERSION)
     if not args.no_disclaimer:
@@ -2499,8 +2520,10 @@ def main():
 
     dns_engine = DNSEngine(timeout=settings.dns_timeout, tries=settings.dns_retries)
     conn = Connectivity(timeout=settings.timeout, ping_timeout=settings.ping_timeout)
-    lock = threading.Lock()
-    
+    lock    = threading.Lock()  # Phase 1 internal lock
+    lock_p2 = threading.Lock()  # Phase 2 internal lock
+    lock_p3 = threading.Lock()  # Phase 3 internal lock
+
     # Identify which groups are actually used in domains.csv
     active_groups = set()
     for d in domains_raw:
@@ -2529,47 +2552,80 @@ def main():
     srv_profiles = {s: derive_server_profile(types) for s, types in srv_to_types.items()}
 
     infra_cache = {}
-    
-    # Run Phase 1: Infrastructure
-    p1_insights = {}
-    if run_p1:
-        infra_cache, p1_insights = run_phase1_infrastructure(all_servers, srv_to_groups, srv_profiles, conn, dns_engine, settings, lock, show_legends=show_legends)
-        log_phase1_results(settings, infra_cache)
 
-    # Run Phase 2: Zones
-    zone_results = []
-    p2_insights = {}
-    if run_p2:
-        zone_results, p2_insights = run_phase2_zones(domains_raw, dns_groups, dns_engine, settings, infra_cache, lock, show_legends=show_legends)
-        log_phase2_results(settings, zone_results)
+    # Run Phase 1: Infrastructure (must complete before phases 2 and 3)
+    infra_cache, p1_insights = run_phase1_infrastructure(
+        all_servers, srv_to_groups, srv_profiles, conn, dns_engine,
+        settings, lock, domains_raw=domains_raw, dns_groups=dns_groups,
+        show_legends=show_legends
+    )
+    log_phase1_results(settings, infra_cache)
 
-    # Run Phase 3: Records
-    results = []
-    p3_insights = {}
-    if run_p3:
-        tasks = []
-        for entry in domains_raw:
-            groups = (entry.get('GROUPS') or '').split(',')
-            domain = entry.get('DOMAIN')
-            if not domain: continue
-            
-            # Base domain + EXTRA subdomains
-            targets = [domain]
-            extra = entry.get('EXTRA')
-            if extra:
-                for prefix in extra.split(','):
-                    p = prefix.strip()
-                    if p: targets.append(f"{p}.{domain}")
-            
-            records = (entry.get('RECORDS') or '').split(',')
-            for target in targets:
-                for group in groups:
-                    group = group.strip().upper()
-                    if group in dns_groups:
-                        for server in dns_groups[group]["servers"]:
-                            tasks.append((domain, target, group, server, records))
-        results, p3_insights = run_phase3_records(tasks, dns_engine, dns_groups, settings, infra_cache, results, lock, show_legends=show_legends)
-        log_phase3_results(settings, results)
+    # ── Parallel: Phases 2 and 3 ──────────────────────────────────────────────
+    # Both phases only READ infra_cache (never write), so they are safe to run
+    # concurrently. Each phase buffers all terminal output and the main thread
+    # flushes Phase 2 first, then Phase 3, preserving a clean sequential display.
+    zone_results       = []
+    p2_insights        = {}
+    p2_output          = ""
+    results            = []
+    p3_insights        = {}
+    p3_output          = ""
+    # Build the Phase 3 task list (needed before submitting to executor)
+    tasks = []
+    for entry in domains_raw:
+        groups  = (entry.get('GROUPS') or '').split(',')
+        domain  = entry.get('DOMAIN')
+        if not domain: continue
+        targets = [domain]
+        extra   = entry.get('EXTRA')
+        if extra:
+            for prefix in extra.split(','):
+                p = prefix.strip()
+                if p: targets.append(f"{p}.{domain}")
+        records = (entry.get('RECORDS') or '').split(',')
+        for target in targets:
+            for group in groups:
+                group = group.strip().upper()
+                if group in dns_groups:
+                    for server in dns_groups[group]["servers"]:
+                        tasks.append((domain, target, group, server, records))
+
+    def _run_p2_buffered():
+        ui.activate_phase_buffer()
+        z_results, z_insights = run_phase2_zones(
+            domains_raw, dns_groups, dns_engine, settings,
+            infra_cache, lock_p2, show_legends=show_legends
+        )
+        log_phase2_results(settings, z_results)
+        return z_results, z_insights, ui.drain_phase_buffer()
+
+    def _run_p3_buffered():
+        ui.activate_phase_buffer()
+        r_results, r_insights = run_phase3_records(
+            tasks, dns_engine, dns_groups, settings,
+            infra_cache, [], lock_p3, show_legends=show_legends
+        )
+        log_phase3_results(settings, r_results)
+        return r_results, r_insights, ui.drain_phase_buffer()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as _phase_exec:
+        _fut_p2 = _phase_exec.submit(_run_p2_buffered)
+        _fut_p3 = _phase_exec.submit(_run_p3_buffered)
+
+        # Wait for both phases, then flush output in order (P2 → P3)
+        zone_results, p2_insights, p2_output = _fut_p2.result()
+        results, p3_insights, p3_output      = _fut_p3.result()
+
+    # Print buffered output sequentially: Phase 2 first, then Phase 3
+    if p2_output:
+        sys.stdout.write(p2_output)
+        sys.stdout.flush()
+    if p3_output:
+        sys.stdout.write(p3_output)
+        sys.stdout.flush()
+
+
 
     # Final Analytics Calculation
     sec_score, priv_score, score_breakdown = calculate_scores(infra_cache, zone_results, settings)
